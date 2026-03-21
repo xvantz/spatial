@@ -1,0 +1,18 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: spatial/gen
+plugins:
+  - remote: buf.build/protocolbuffers/go:v1.36.11
+    out: go-worker/gen
+    opt: paths=source_relative
+
+  - remote: buf.build/community/stephenh-ts-proto:v2.11.4
+    out: node-plane/gen
+    opt:
+      - env=node
+      - outputJsonMethods=false
+      - forceLong=string
+      - esModuleInterop=true
