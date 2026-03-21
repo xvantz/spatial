@@ -1,0 +1,22 @@
+services:
+  nats:
+    image: nats:2.10-alpine
+    container_name: nats-core
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-c", "/etc/nats/nats.conf"]
+    deploy:
+      resources:
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    networks:
+      - nats_net
+    restart: always
+    volumes:
+      - ./nats.conf:/etc/nats/nats.conf:ro
+
+networks:
+  nats_net:
+    driver: bridge
