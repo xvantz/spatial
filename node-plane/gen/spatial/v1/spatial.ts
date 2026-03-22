@@ -2,18 +2,22 @@
 // versions:
 //   protoc-gen-ts_proto  v2.11.4
 //   protoc               unknown
-// source: proto/spatial/v1/spatial.proto
+// source: spatial/v1/spatial.proto
 
 /* eslint-disable */
 import { BinaryReader, BinaryWriter } from "@bufbuild/protobuf/wire";
 
-export const protobufPackage = "proto.spatial.v1";
+export const protobufPackage = "spatial.v1";
 
-export interface PlayerDelta {
-  userId: number;
+export interface Vector3 {
   x: number;
   y: number;
   z: number;
+}
+
+export interface PlayerDelta {
+  userId: number;
+  position: Vector3 | undefined;
 }
 
 export interface TelemetryBatch {
@@ -30,8 +34,78 @@ export interface ColshapeEvent {
   isEnter: boolean;
 }
 
+function createBaseVector3(): Vector3 {
+  return { x: 0, y: 0, z: 0 };
+}
+
+export const Vector3: MessageFns<Vector3> = {
+  encode(message: Vector3, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.x !== 0) {
+      writer.uint32(13).float(message.x);
+    }
+    if (message.y !== 0) {
+      writer.uint32(21).float(message.y);
+    }
+    if (message.z !== 0) {
+      writer.uint32(29).float(message.z);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): Vector3 {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseVector3();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 13) {
+            break;
+          }
+
+          message.x = reader.float();
+          continue;
+        }
+        case 2: {
+          if (tag !== 21) {
+            break;
+          }
+
+          message.y = reader.float();
+          continue;
+        }
+        case 3: {
+          if (tag !== 29) {
+            break;
+          }
+
+          message.z = reader.float();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  create<I extends Exact<DeepPartial<Vector3>, I>>(base?: I): Vector3 {
+    return Vector3.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<Vector3>, I>>(object: I): Vector3 {
+    const message = createBaseVector3();
+    message.x = object.x ?? 0;
+    message.y = object.y ?? 0;
+    message.z = object.z ?? 0;
+    return message;
+  },
+};
+
 function createBasePlayerDelta(): PlayerDelta {
-  return { userId: 0, x: 0, y: 0, z: 0 };
+  return { userId: 0, position: undefined };
 }
 
 export const PlayerDelta: MessageFns<PlayerDelta> = {
@@ -39,14 +113,8 @@ export const PlayerDelta: MessageFns<PlayerDelta> = {
     if (message.userId !== 0) {
       writer.uint32(8).uint32(message.userId);
     }
-    if (message.x !== 0) {
-      writer.uint32(21).float(message.x);
-    }
-    if (message.y !== 0) {
-      writer.uint32(29).float(message.y);
-    }
-    if (message.z !== 0) {
-      writer.uint32(37).float(message.z);
+    if (message.position !== undefined) {
+      Vector3.encode(message.position, writer.uint32(18).fork()).join();
     }
     return writer;
   },
@@ -67,27 +135,11 @@ export const PlayerDelta: MessageFns<PlayerDelta> = {
           continue;
         }
         case 2: {
-          if (tag !== 21) {
+          if (tag !== 18) {
             break;
           }
 
-          message.x = reader.float();
-          continue;
-        }
-        case 3: {
-          if (tag !== 29) {
-            break;
-          }
-
-          message.y = reader.float();
-          continue;
-        }
-        case 4: {
-          if (tag !== 37) {
-            break;
-          }
-
-          message.z = reader.float();
+          message.position = Vector3.decode(reader, reader.uint32());
           continue;
         }
       }
@@ -105,9 +157,9 @@ export const PlayerDelta: MessageFns<PlayerDelta> = {
   fromPartial<I extends Exact<DeepPartial<PlayerDelta>, I>>(object: I): PlayerDelta {
     const message = createBasePlayerDelta();
     message.userId = object.userId ?? 0;
-    message.x = object.x ?? 0;
-    message.y = object.y ?? 0;
-    message.z = object.z ?? 0;
+    message.position = (object.position !== undefined && object.position !== null)
+      ? Vector3.fromPartial(object.position)
+      : undefined;
     return message;
   },
 };
