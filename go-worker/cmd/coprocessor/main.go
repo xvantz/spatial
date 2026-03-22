@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -29,8 +30,8 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	_, err = broker.Subscribe("state.update", func(msg *nats.Msg) {
-
+	_, err = broker.Subscribe("spatial.telemetry", func(msg *nats.Msg) {
+		fmt.Println(msg)
 	})
 	if err != nil {
 		log.Fatalf("[Fatal] Error subscribe to state.update: %v", err)
