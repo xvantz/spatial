@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -30,11 +29,11 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	_, err = broker.Subscribe("spatial.telemetry", func(msg *nats.Msg) {
-		fmt.Println(msg)
-	})
+	telemetry := engine.NewTelemetryHandler()
+
+	_, err = broker.Subscribe("spatial.telemetry", telemetry.HandleNatsMessage)
 	if err != nil {
-		log.Fatalf("[Fatal] Error subscribe to state.update: %v", err)
+		log.Fatalf("[Fatal] Error subscribe to spatial.telemetry: %v", err)
 	}
 
 	metronome := engine.NewMetronome(broker)
