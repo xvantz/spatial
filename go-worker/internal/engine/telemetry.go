@@ -14,6 +14,7 @@ import (
 type TelemetryHandler struct {
 	pool       sync.Pool
 	batchCount atomic.Uint64
+	grid       *SpatialGrid
 }
 
 func NewTelemetryHandler() *TelemetryHandler {
@@ -53,6 +54,15 @@ func (h *TelemetryHandler) HandleNatsMessage(msg *nats.Msg) {
 	if err := proto.Unmarshal(msg.Data, batch); err != nil {
 		log.Printf("[Telemetry] Error unpacking protobuf: %v", err)
 		return
+	}
+
+	for _, user := range batch.Players {
+		h.grid.UpdatePosition(
+			user.UserId,
+			user.Position.X,
+			user.Position.Y,
+			user.Position.Z,
+		)
 	}
 
 	h.batchCount.Add(1)
