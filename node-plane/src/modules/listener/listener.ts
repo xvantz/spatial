@@ -3,61 +3,81 @@ import { IUser } from "../../types/user";
 import { TelemetryBatch } from "../../../gen/spatial/v1/spatial";
 
 const WORLD = { SIZE_X: 3500, SIZE_Y: 3500, SIZE_Z: 1000 } as const;
-const SPEED = 15;
+const SPEED_PER_SEC = 375;
+const TICK_RATE_MS = 40;
 
 export const createListener = (nats: NatsConnection, users: IUser[]) => {
   const dirtySet = new Set<number>();
 
-  const sub = nats.subscribe("engine.tick", {
-    callback: (err, _) => {
-      if (err) return console.error("[NATS] Error in engine.tick", err);
+  let ticks = 0;
+  let lastReportTime = performance.now();
+  let lastTickTime = performance.now();
 
-      const updateCount = Math.floor(Math.random() * 51) + 50;
+  console.log(
+    `[Telemetry] Started generator. Target: ${1000 / TICK_RATE_MS} TPS`,
+  );
 
-      while (dirtySet.size < updateCount) {
-        dirtySet.add(Math.floor(Math.random() * users.length));
-      }
+  const interval = setInterval(() => {
+    const now = performance.now();
+    const dt = (now - lastTickTime) / 1000;
+    lastTickTime = now;
 
-      const batchToSync: IUser[] = [];
+    ticks++;
 
-      for (const idx of dirtySet) {
-        const u = users[idx];
+    if (now - lastReportTime >= 1000) {
+      const elapsed = (now - lastReportTime) / 1000;
+      const tps = (ticks / elapsed).toFixed(2);
+      console.log(
+        `[Heartbeat] Real TPS: ${tps} | Last dt: ${(dt * 1000).toFixed(2)}ms`,
+      );
 
-        u.position.x += (Math.random() * 2 - 1) * SPEED;
-        u.position.y += (Math.random() * 2 - 1) * SPEED;
-        u.position.z += (Math.random() * 2 - 1) * SPEED;
+      ticks = 0;
+      lastReportTime = now;
+    }
 
-        if (u.position.x > WORLD.SIZE_X) u.position.x = WORLD.SIZE_X;
-        if (u.position.x < -WORLD.SIZE_X) u.position.x = -WORLD.SIZE_X;
+    const updateCount = Math.floor(Math.random() * 51) + 50;
 
-        if (u.position.y > WORLD.SIZE_Y) u.position.y = WORLD.SIZE_Y;
-        if (u.position.y < -WORLD.SIZE_Y) u.position.y = -WORLD.SIZE_Y;
+    while (dirtySet.size < updateCount) {
+      dirtySet.add(Math.floor(Math.random() * users.length));
+    }
 
-        if (u.position.z > WORLD.SIZE_Z) u.position.z = WORLD.SIZE_Z;
-        if (u.position.z < -WORLD.SIZE_Z) u.position.z = -WORLD.SIZE_Z;
+    const batchToSync: IUser[] = [];
 
-        batchToSync.push(u);
-      }
-      dirtySet.clear();
+    for (const idx of dirtySet) {
+      const u = users[idx];
 
-      console.log(`[Tick] Moved ${batchToSync.length} users.`);
+      u.position.x += (Math.random() * 2 - 1) * SPEED_PER_SEC * dt;
+      u.position.y += (Math.random() * 2 - 1) * SPEED_PER_SEC * dt;
+      u.position.z += (Math.random() * 2 - 1) * SPEED_PER_SEC * dt;
 
-      const telemetryMessage: TelemetryBatch = {
-        players: batchToSync.map((u) => ({
-          userId: u.id,
-          position: u.position,
-        })),
-      };
-      const payload = TelemetryBatch.encode(telemetryMessage).finish();
+      if (u.position.x > WORLD.SIZE_X) u.position.x = WORLD.SIZE_X;
+      if (u.position.x < -WORLD.SIZE_X) u.position.x = -WORLD.SIZE_X;
 
-      nats.publish("spatial.telemetry", payload);
-    },
-  });
+      if (u.position.y > WORLD.SIZE_Y) u.position.y = WORLD.SIZE_Y;
+      if (u.position.y < -WORLD.SIZE_Y) u.position.y = -WORLD.SIZE_Y;
+
+      if (u.position.z > WORLD.SIZE_Z) u.position.z = WORLD.SIZE_Z;
+      if (u.position.z < -WORLD.SIZE_Z) u.position.z = -WORLD.SIZE_Z;
+
+      batchToSync.push(u);
+    }
+    dirtySet.clear();
+
+    const telemetryMessage: TelemetryBatch = {
+      players: batchToSync.map((u) => ({
+        userId: u.id,
+        position: u.position,
+      })),
+    };
+
+    const payload = TelemetryBatch.encode(telemetryMessage).finish();
+    nats.publish("spatial.telemetry", payload);
+  }, TICK_RATE_MS);
 
   return {
     cleanup: () => {
-      console.log("[Listener] Stoping subscribe and clearing state...");
-      sub.unsubscribe();
+      console.log("[Listener] Stoping generator moves...");
+      clearInterval(interval);
       dirtySet.clear();
     },
   };
