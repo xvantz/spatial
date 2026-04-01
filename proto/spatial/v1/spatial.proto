@@ -17,8 +17,22 @@ message TelemetryBatch {
   repeated PlayerDelta players = 1;
 }
 
-message VisibilityRequest {
-  repeated uint32 visible_user_ids = 1;
+message VisibilityQuery {
+  uint32 user_id = 1;
+  float radius = 2;
+}
+
+message VisibilityBatchQuery {
+  repeated VisibilityQuery queries = 1;
+}
+
+message VisibilityResult {
+  uint32 user_id = 1;
+  repeated uint32 visible_user_ids = 2;
+}
+
+message VisibilityBatchResponse {
+  repeated VisibilityResult results = 1;
 }
 
 message ColshapeEvent {
