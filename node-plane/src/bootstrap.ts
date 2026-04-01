@@ -1,6 +1,7 @@
 import { createNatsConnection } from "./infra/nats";
 import { generateFakeUsers } from "./modules/generator/generateFakeUsers";
 import { createListener } from "./modules/listener/listener";
+import { createVisibilityPinger } from "./modules/visibility/visibility";
 
 const bootstrap = async () => {
   try {
@@ -15,11 +16,15 @@ const bootstrap = async () => {
     const listener = createListener(nats, fakeUsers);
     console.log("[bootstrap] listeners started.");
 
+    const visibility = createVisibilityPinger(nats, fakeUsers);
+    console.log("[bootstrap] visibility pinger started.");
+
     const shutdown = async (signal: string) => {
       console.log(`[Shutdown] Getted ${signal}. Stopped process...`);
 
       try {
         listener.cleanup();
+        visibility.cleanup();
 
         await nats.drain();
         await nats.close();
