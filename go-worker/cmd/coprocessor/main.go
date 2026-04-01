@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"os"
 	"os/signal"
@@ -23,9 +22,6 @@ func main() {
 
 	defer broker.Shutdown()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -35,14 +31,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("[Fatal] Error subscribe to spatial.telemetry: %v", err)
 	}
-
-	metronome := engine.NewMetronome(broker)
-	metronome.Start(ctx, 16*time.Millisecond)
+	_, err = broker.Subscribe("spatial.query.visibility", telemetry.HandleVisibilityBatchQuery)
+	if err != nil {
+		log.Fatalf("[Fatal] Error subscribe to spatial.query.visibility: %v", err)
+	}
 
 	<-sigChan
 	log.Println("\n[Shutdown] Get signal. Start closing...")
-
-	cancel()
 
 	time.Sleep(100 * time.Millisecond)
 	log.Println("[Shutdown] Coprocessor stopped.")
