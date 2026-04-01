@@ -24,6 +24,7 @@ func NewTelemetryHandler() *TelemetryHandler {
 				return &spatialv1.TelemetryBatch{}
 			},
 		},
+		grid: NewSpatialGrid(),
 	}
 
 	go handler.mobitorRPS()
@@ -66,4 +67,42 @@ func (h *TelemetryHandler) HandleNatsMessage(msg *nats.Msg) {
 	}
 
 	h.batchCount.Add(1)
+}
+
+func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
+	if msg.Reply == "" {
+		return
+	}
+
+	batchQuery := &spatialv1.VisibilityBatchQuery{}
+	if err := proto.Unmarshal(msg.Data, batchQuery); err != nil {
+		return
+	}
+
+	results := make([]*spatialv1.VisibilityResult, 0, len(batchQuery.Queries))
+
+	workBuffer := make([]uint32, 0, 100)
+
+	for _, q := range batchQuery.Queries {
+		visibleIDs := h.grid.GetInRadius(q.UserId, q.Radius, workBuffer)
+
+		finalIDs := make([]uint32, len(visibleIDs))
+		copy(finalIDs, visibleIDs)
+
+		results = append(results, &spatialv1.VisibilityResult{
+			UserId:         q.UserId,
+			VisibleUserIds: finalIDs,
+		})
+	}
+
+	response := &spatialv1.VisibilityBatchResponse{
+		Results: results,
+	}
+
+	respBytes, err := proto.Marshal(response)
+	if err != nil {
+		return
+	}
+
+	msg.Respond(respBytes)
 }
