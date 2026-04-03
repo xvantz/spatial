@@ -4,10 +4,13 @@ import {
   VisibilityBatchQuery,
   VisibilityBatchResponse,
 } from "../../../gen/spatial/v1/spatial";
+import { requestFullSync } from "../listener/listener";
 
 export const createVisibilityPinger = (
   nats: NatsConnection,
   users: IUser[],
+  getCurrentHash: () => bigint,
+  checkHashInHistory: (h: bigint) => boolean,
 ) => {
   console.log("[Pinger] Start polling visibility");
 
@@ -27,7 +30,11 @@ export const createVisibilityPinger = (
       });
     }
 
-    const queryMsg = { queries };
+    const currentLocalHash = getCurrentHash();
+    const queryMsg = {
+      queries,
+      expectedStateHash: currentLocalHash.toString(),
+    };
 
     const payload = VisibilityBatchQuery.encode(queryMsg).finish();
 
@@ -39,6 +46,16 @@ export const createVisibilityPinger = (
 
       const decoded = VisibilityBatchResponse.decode(response.data);
       const elapsed = performance.now() - start;
+
+      const remoteHash = BigInt(decoded.stateHash || "0");
+
+      // Check if remote hash exists in our recent history
+      if (!checkHashInHistory(remoteHash)) {
+        console.error(
+          `[DESYNC] Remote hash ${remoteHash.toString()} not found in local history! Current Local: ${currentLocalHash.toString()}`,
+        );
+        requestFullSync();
+      }
 
       console.log(
         `[CQRS] batch size ${batchSize} users processed for ${elapsed.toFixed(2)}ms`,

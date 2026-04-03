@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	spatialv1 "spatial/gen/spatial/v1"
 	"sync"
 )
 
@@ -16,6 +17,8 @@ type SpatialGrid struct {
 	buckets      map[uint64][]uint32
 	reverseIndex map[uint32]uint64
 	positions    map[uint32]Position
+	playerHashes map[uint32]uint64
+	totalHash    uint64
 }
 
 func NewSpatialGrid() *SpatialGrid {
@@ -23,6 +26,7 @@ func NewSpatialGrid() *SpatialGrid {
 		buckets:      make(map[uint64][]uint32, 10000),
 		reverseIndex: make(map[uint32]uint64, 1000),
 		positions:    make(map[uint32]Position, 1000),
+		playerHashes: make(map[uint32]uint64, 1000),
 	}
 }
 
@@ -35,16 +39,36 @@ func (g *SpatialGrid) GetCubeIndex(x, y, z float32) uint64 {
 }
 
 func (g *SpatialGrid) UpdatePosition(userID uint32, x, y, z float32) {
-	newGridID := g.GetCubeIndex(x, y, z)
-
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.updatePositionLocked(userID, x, y, z)
+}
+
+func (g *SpatialGrid) BulkUpdate(players []*spatialv1.PlayerDelta) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	for _, p := range players {
+		g.updatePositionLocked(p.UserId, p.Position.X, p.Position.Y, p.Position.Z)
+	}
+}
+
+func (g *SpatialGrid) updatePositionLocked(userID uint32, x, y, z float32) {
+	newGridID := g.GetCubeIndex(x, y, z)
+	newHash := HashPlayer(userID, x, y, z)
+
+	if oldHash, exists := g.playerHashes[userID]; exists {
+		g.totalHash ^= oldHash
+	}
+	g.playerHashes[userID] = newHash
+	g.totalHash ^= newHash
+
 	g.positions[userID] = Position{X: x, Y: y, Z: z}
 
 	oldGridID, exists := g.reverseIndex[userID]
 	if !exists || oldGridID != newGridID {
 		if exists {
-			g.removeFromBucket(userID, oldGridID)
+			g.removeFromBucketLocked(userID, oldGridID)
 		}
 
 		g.buckets[newGridID] = append(g.buckets[newGridID], userID)
@@ -104,7 +128,7 @@ func (g *SpatialGrid) GetInRadius(userID uint32, radius float32, buffer []uint32
 	return buffer
 }
 
-func (g *SpatialGrid) removeFromBucket(userID uint32, gridID uint64) {
+func (g *SpatialGrid) removeFromBucketLocked(userID uint32, gridID uint64) {
 	bucket := g.buckets[gridID]
 	lastIdx := len(bucket) - 1
 
@@ -117,9 +141,24 @@ func (g *SpatialGrid) removeFromBucket(userID uint32, gridID uint64) {
 	}
 }
 
+func (g *SpatialGrid) GetTotalHash() uint64 {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.totalHash
+}
+
 func (g *SpatialGrid) RemovePlayer(userID uint32) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if hash, exists := g.playerHashes[userID]; exists {
+		g.totalHash ^= hash
+		delete(g.playerHashes, userID)
+	}
+
 	if gridID, exists := g.reverseIndex[userID]; exists {
-		g.removeFromBucket(userID, gridID)
+		g.removeFromBucketLocked(userID, gridID)
 		delete(g.reverseIndex, userID)
+		delete(g.positions, userID)
 	}
 }

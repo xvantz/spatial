@@ -16,7 +16,12 @@ const bootstrap = async () => {
     const listener = createListener(nats, fakeUsers);
     console.log("[bootstrap] listeners started.");
 
-    const visibility = createVisibilityPinger(nats, fakeUsers);
+    const visibility = createVisibilityPinger(
+      nats,
+      fakeUsers,
+      listener.getCurrentHash,
+      listener.checkHashInHistory,
+    );
     console.log("[bootstrap] visibility pinger started.");
 
     const shutdown = async (signal: string) => {

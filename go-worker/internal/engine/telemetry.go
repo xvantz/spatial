@@ -57,12 +57,13 @@ func (h *TelemetryHandler) HandleNatsMessage(msg *nats.Msg) {
 		return
 	}
 
-	for _, user := range batch.Players {
-		h.grid.UpdatePosition(
-			user.UserId,
-			user.Position.X,
-			user.Position.Y,
-			user.Position.Z,
+	h.grid.BulkUpdate(batch.Players)
+
+	if batch.StateHash != 0 && batch.StateHash != h.grid.GetTotalHash() {
+		log.Printf(
+			"[DESYNC] Received Hash: %v | Current Hash: %v",
+			batch.StateHash,
+			h.grid.GetTotalHash(),
 		)
 	}
 
@@ -96,7 +97,8 @@ func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
 	}
 
 	response := &spatialv1.VisibilityBatchResponse{
-		Results: results,
+		Results:   results,
+		StateHash: h.grid.GetTotalHash(),
 	}
 
 	respBytes, err := proto.Marshal(response)
