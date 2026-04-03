@@ -15,16 +15,12 @@ export const requestFullSync = () => {
 
 export const createListener = (nats: NatsConnection, users: IUser[]) => {
   const dirtySet = new Set<number>();
-
-  let ticks = 0;
-  let lastReportTime = performance.now();
   let lastTickTime = performance.now();
 
   let totalHash = BigInt(0);
   const playerHashes = new Map<number, bigint>();
   const hashHistory = new Set<bigint>();
 
-  // Initial hash calculation
   for (const u of users) {
     u.position.x = Math.fround(u.position.x);
     u.position.y = Math.fround(u.position.y);
@@ -36,44 +32,25 @@ export const createListener = (nats: NatsConnection, users: IUser[]) => {
 
   hashHistory.add(totalHash);
 
-  console.log(
-    `[Telemetry] Started generator. Target: ${1000 / TICK_RATE_MS} TPS. Initial Hash: ${totalHash.toString()}`,
-  );
-
   const interval = setInterval(() => {
     const now = performance.now();
     const dt = (now - lastTickTime) / 1000;
     lastTickTime = now;
 
-    ticks++;
-
-    if (now - lastReportTime >= 1000) {
-      const elapsed = (now - lastReportTime) / 1000;
-      const tps = (ticks / elapsed).toFixed(2);
-      console.log(
-        `[Heartbeat] Real TPS: ${tps} | Hash: ${totalHash.toString()}`,
-      );
-
-      ticks = 0;
-      lastReportTime = now;
-    }
-
     const batchToSync: IUser[] = [];
 
     if (fullSyncRequested) {
-      console.warn("[Telemetry] FULL SYNC TRIGGERED");
+      console.warn("[Telemetry] Full world synchronization triggered");
       fullSyncRequested = false;
       batchToSync.push(...users);
     } else {
       const updateCount = Math.floor(Math.random() * 51) + 50;
-
       while (dirtySet.size < updateCount) {
         dirtySet.add(Math.floor(Math.random() * users.length));
       }
 
       for (const idx of dirtySet) {
         const u = users[idx];
-
         const oldHash = playerHashes.get(u.id) || BigInt(0);
         totalHash ^= oldHash;
 
@@ -83,24 +60,16 @@ export const createListener = (nats: NatsConnection, users: IUser[]) => {
 
         if (u.position.x > WORLD.SIZE_X) u.position.x = WORLD.SIZE_X;
         if (u.position.x < -WORLD.SIZE_X) u.position.x = -WORLD.SIZE_X;
-
         if (u.position.y > WORLD.SIZE_Y) u.position.y = WORLD.SIZE_Y;
         if (u.position.y < -WORLD.SIZE_Y) u.position.y = -WORLD.SIZE_Y;
-
         if (u.position.z > WORLD.SIZE_Z) u.position.z = WORLD.SIZE_Z;
         if (u.position.z < -WORLD.SIZE_Z) u.position.z = -WORLD.SIZE_Z;
 
-        // Snap to float32
         u.position.x = Math.fround(u.position.x);
         u.position.y = Math.fround(u.position.y);
         u.position.z = Math.fround(u.position.z);
 
-        const newHash = hashPlayer(
-          u.id,
-          u.position.x,
-          u.position.y,
-          u.position.z,
-        );
+        const newHash = hashPlayer(u.id, u.position.x, u.position.y, u.position.z);
         playerHashes.set(u.id, newHash);
         totalHash ^= newHash;
 
@@ -123,15 +92,13 @@ export const createListener = (nats: NatsConnection, users: IUser[]) => {
       stateHash: totalHash.toString(),
     };
 
-    const payload = TelemetryBatch.encode(telemetryMessage).finish();
-    nats.publish("spatial.telemetry", payload);
+    nats.publish("spatial.telemetry", TelemetryBatch.encode(telemetryMessage).finish());
   }, TICK_RATE_MS);
 
   return {
     getCurrentHash: () => totalHash,
     checkHashInHistory: (h: bigint) => hashHistory.has(h),
     cleanup: () => {
-      console.log("[Listener] Stoping generator moves...");
       clearInterval(interval);
       dirtySet.clear();
       hashHistory.clear();

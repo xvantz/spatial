@@ -11,7 +11,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// TelemetryHandler handles incoming spatial updates and visibility queries.
+// It manages a high-performance SpatialGrid and uses object pooling to reduce GC pressure.
 type TelemetryHandler struct {
+	// pool provides reusable protobuf message objects to minimize allocations
+	// during high-frequency telemetry processing.
 	pool       sync.Pool
 	batchCount atomic.Uint64
 	grid       *SpatialGrid
@@ -27,49 +31,50 @@ func NewTelemetryHandler() *TelemetryHandler {
 		grid: NewSpatialGrid(),
 	}
 
-	go handler.mobitorRPS()
+	go handler.monitorRPS()
 
 	return handler
 }
 
-func (h *TelemetryHandler) mobitorRPS() {
-	ticker := time.NewTicker(1 * time.Second)
+func (h *TelemetryHandler) monitorRPS() {
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		count := h.batchCount.Swap(0)
 		if count > 0 {
-			log.Printf("[Telemetry] Bandwidth: %d batch/sec", count)
+			log.Printf("[Telemetry] Processing rate: %d batches/sec", count/10)
 		}
 	}
 }
 
+// HandleNatsMessage processes incoming telemetry batches and maintains world state hash.
 func (h *TelemetryHandler) HandleNatsMessage(msg *nats.Msg) {
+	// Acquire a message object from the pool.
 	batch := h.pool.Get().(*spatialv1.TelemetryBatch)
 
 	defer func() {
+		// Reset state and return the object to the pool for reuse.
 		batch.Reset()
 		h.pool.Put(batch)
 	}()
 
 	if err := proto.Unmarshal(msg.Data, batch); err != nil {
-		log.Printf("[Telemetry] Error unpacking protobuf: %v", err)
 		return
 	}
 
+	// Atomically update world state and hash.
 	h.grid.BulkUpdate(batch.Players)
 
+	// Log desynchronization if detected (optional, but useful for monitoring).
 	if batch.StateHash != 0 && batch.StateHash != h.grid.GetTotalHash() {
-		log.Printf(
-			"[DESYNC] Received Hash: %v | Current Hash: %v",
-			batch.StateHash,
-			h.grid.GetTotalHash(),
-		)
+		log.Printf("[Sync] Desync detected. Remote: %v | Local: %v", batch.StateHash, h.grid.GetTotalHash())
 	}
 
 	h.batchCount.Add(1)
 }
 
+// HandleVisibilityBatchQuery processes visibility range requests from clients.
 func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
 	if msg.Reply == "" {
 		return
@@ -81,7 +86,6 @@ func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
 	}
 
 	results := make([]*spatialv1.VisibilityResult, 0, len(batchQuery.Queries))
-
 	workBuffer := make([]uint32, 0, 100)
 
 	for _, q := range batchQuery.Queries {

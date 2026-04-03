@@ -8,10 +8,14 @@ import (
 
 const CellSize = 50.0
 
+// Position represents 3D coordinates in the spatial world.
 type Position struct {
 	X, Y, Z float32
 }
 
+// SpatialGrid implements a voxel-based spatial partitioning system.
+// It uses a bucket-based approach for efficient proximity queries and
+// maintains a commutative XOR hash of the entire world state for synchronization.
 type SpatialGrid struct {
 	mu           sync.RWMutex
 	buckets      map[uint64][]uint32
@@ -21,6 +25,7 @@ type SpatialGrid struct {
 	totalHash    uint64
 }
 
+// NewSpatialGrid initializes a new grid with pre-allocated maps for performance.
 func NewSpatialGrid() *SpatialGrid {
 	return &SpatialGrid{
 		buckets:      make(map[uint64][]uint32, 10000),
@@ -30,6 +35,7 @@ func NewSpatialGrid() *SpatialGrid {
 	}
 }
 
+// GetCubeIndex calculates a unique 64-bit identifier for a 3D cell based on coordinates.
 func (g *SpatialGrid) GetCubeIndex(x, y, z float32) uint64 {
 	bx := int16(math.Floor(float64(x / CellSize)))
 	by := int16(math.Floor(float64(y / CellSize)))
@@ -38,12 +44,15 @@ func (g *SpatialGrid) GetCubeIndex(x, y, z float32) uint64 {
 	return uint64(uint16(bx))<<32 | uint64(uint16(by))<<16 | uint64(uint16(bz))
 }
 
+// UpdatePosition updates a single player's position and recalculates the global state hash.
 func (g *SpatialGrid) UpdatePosition(userID uint32, x, y, z float32) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.updatePositionLocked(userID, x, y, z)
 }
 
+// BulkUpdate processes multiple player updates atomically under a single write lock.
+// This prevents desynchronization reports caused by reading partial world states.
 func (g *SpatialGrid) BulkUpdate(players []*spatialv1.PlayerDelta) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -53,6 +62,8 @@ func (g *SpatialGrid) BulkUpdate(players []*spatialv1.PlayerDelta) {
 	}
 }
 
+// updatePositionLocked performs the actual position update and bucket management.
+// Must be called with the write lock held.
 func (g *SpatialGrid) updatePositionLocked(userID uint32, x, y, z float32) {
 	newGridID := g.GetCubeIndex(x, y, z)
 	newHash := HashPlayer(userID, x, y, z)
@@ -76,6 +87,7 @@ func (g *SpatialGrid) updatePositionLocked(userID uint32, x, y, z float32) {
 	}
 }
 
+// GetInRadius performs a spherical proximity query, returning user IDs within the specified radius.
 func (g *SpatialGrid) GetInRadius(userID uint32, radius float32, buffer []uint32) []uint32 {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
@@ -141,12 +153,14 @@ func (g *SpatialGrid) removeFromBucketLocked(userID uint32, gridID uint64) {
 	}
 }
 
+// GetTotalHash returns the current commutative XOR hash of the entire grid.
 func (g *SpatialGrid) GetTotalHash() uint64 {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.totalHash
 }
 
+// RemovePlayer cleans up a player's data and updates the global state hash.
 func (g *SpatialGrid) RemovePlayer(userID uint32) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

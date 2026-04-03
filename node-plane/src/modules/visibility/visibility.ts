@@ -12,13 +12,10 @@ export const createVisibilityPinger = (
   getCurrentHash: () => bigint,
   checkHashInHistory: (h: bigint) => boolean,
 ) => {
-  console.log("[Pinger] Start polling visibility");
-
   const interval = setInterval(async () => {
     if (users.length === 0) return;
 
     const searchRadius = 150.0;
-
     const batchSize = Math.min(users.length, 50);
     const queries = [];
 
@@ -36,56 +33,29 @@ export const createVisibilityPinger = (
       expectedStateHash: currentLocalHash.toString(),
     };
 
-    const payload = VisibilityBatchQuery.encode(queryMsg).finish();
-
     try {
-      const start = performance.now();
-      const response = await nats.request("spatial.query.visibility", payload, {
-        timeout: 500,
-      });
+      const response = await nats.request(
+        "spatial.query.visibility",
+        VisibilityBatchQuery.encode(queryMsg).finish(),
+        { timeout: 500 },
+      );
 
       const decoded = VisibilityBatchResponse.decode(response.data);
-      const elapsed = performance.now() - start;
-
       const remoteHash = BigInt(decoded.stateHash || "0");
 
-      // Check if remote hash exists in our recent history
       if (!checkHashInHistory(remoteHash)) {
         console.error(
-          `[DESYNC] Remote hash ${remoteHash.toString()} not found in local history! Current Local: ${currentLocalHash.toString()}`,
+          `[Sync] Hash history miss. Desync confirmed! Remote: ${remoteHash.toString()} | Current Local: ${currentLocalHash.toString()}`,
         );
         requestFullSync();
       }
-
-      console.log(
-        `[CQRS] batch size ${batchSize} users processed for ${elapsed.toFixed(2)}ms`,
-      );
-
-      if (decoded.results && decoded.results.length > 0) {
-        const first = decoded.results[0];
-
-        const visibleCount = first.visibleUserIds
-          ? first.visibleUserIds.length
-          : 0;
-
-        console.log(
-          `       User ${first.userId} sees around self (${searchRadius}m): ${visibleCount} entities.`,
-        );
-
-        if (visibleCount > 0) {
-          console.log(
-            `       ID neighbors: ${first.visibleUserIds.join(", ")}`,
-          );
-        }
-      }
     } catch (err) {
-      console.error("[CQRS] Error or timeout batch request visibility", err);
+      console.error("[Visibility] RPC failure:", err);
     }
   }, 1000);
 
   return {
     cleanup: () => {
-      console.log("[Pinger] Stop polling...");
       clearInterval(interval);
     },
   };
