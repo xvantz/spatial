@@ -54,24 +54,38 @@ To ensure the Node-Plane and Go-Worker are always in sync without sending the fu
 
 ## Getting Started
 
-### 1. Infrastructure
-Spin up the NATS message broker:
+### 1. Fast Track (Docker Compose)
+The easiest way to run the entire system (NATS + Go-Worker + Node-Plane) is using Docker:
 ```bash
-docker compose up -d
+docker compose up --build
+```
+This will:
+1.  Start the **NATS** broker.
+2.  Build and run the **Go Spatial Worker**.
+3.  Build and run the **Node Master Plane**.
+
+### 2. Manual Development Setup
+
+#### Infrastructure (NATS Only)
+If you want to run services manually for debugging:
+```bash
+docker compose up nats -d
 ```
 
-### 2. Go-Worker (Coprocessor)
+#### Go-Worker (Coprocessor)
 Navigate to the `go-worker` directory and run the service:
 ```bash
 cd go-worker
+export NATS_URL=nats://localhost:4222
 go run ./cmd/coprocessor/main.go
 ```
 
-### 3. Node-Plane (Master)
+#### Node-Plane (Master)
 Navigate to the `node-plane` directory, install dependencies, and start the simulation:
 ```bash
 cd node-plane
 pnpm install
+export NATS_URL=nats://localhost:4222
 pnpm run dev
 ```
 

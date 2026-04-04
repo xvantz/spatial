@@ -12,11 +12,39 @@ services:
           cpus: "0.5"
           memory: 256M
     networks:
-      - nats_net
+      - spatial_net
     restart: always
     volumes:
       - ./nats.conf:/etc/nats/nats.conf:ro
 
+  go-worker:
+    build:
+      context: ./go-worker
+      dockerfile: Dockerfile
+    container_name: go-worker
+    depends_on:
+      - nats
+    environment:
+      - NATS_URL=nats://nats:4222
+    networks:
+      - spatial_net
+    restart: always
+
+  node-plane:
+    build:
+      context: ./node-plane
+      dockerfile: Dockerfile
+    container_name: node-plane
+    depends_on:
+      - nats
+      - go-worker
+    environment:
+      - NATS_URL=nats://nats:4222
+      - NODE_ENV=production
+    networks:
+      - spatial_net
+    restart: always
+
 networks:
-  nats_net:
+  spatial_net:
     driver: bridge

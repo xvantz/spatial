@@ -16,7 +16,12 @@ import (
 func main() {
 	log.Println("[Bootstrap] Start Spatial Coprocessor...")
 
-	broker, err := transport.NewBroker(nats.DefaultURL)
+	natsURL := os.Getenv("NATS_URL")
+	if natsURL == "" {
+		natsURL = nats.DefaultURL
+	}
+
+	broker, err := transport.NewBroker(natsURL)
 	if err != nil {
 		log.Fatalf("[Fatal] Can`t start transport: %v", err)
 	}

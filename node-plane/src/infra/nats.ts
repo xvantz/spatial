@@ -5,7 +5,7 @@ let nc: NatsConnection;
 export const createNatsConnection = async () => {
   if (!nc) {
     nc = await connect({
-      servers: "nats://localhost:4222",
+      servers: process.env.NATS_URL || "nats://localhost:4222",
       reconnect: true,
       maxReconnectAttempts: -1,
       waitOnFirstConnect: true,

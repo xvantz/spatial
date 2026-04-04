@@ -1,0 +1,7 @@
+vendor
+.bin
+.git
+.gitignore
+Dockerfile
+.dockerignore
+.golangci.yml
