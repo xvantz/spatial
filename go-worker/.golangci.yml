@@ -3,13 +3,19 @@ version: "2"
 run:
   timeout: 5m
   tests: true
-  skip-dirs:
-    - gen
   allow-parallel-runners: true
+
+issues:
+  exclude-dirs:
+    - gen
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
 
 linters-settings:
   govet:
-    check-shadowing: true
+    enable:
+      - shadow
   gocyclo:
     min-complexity: 15
   dupl:
