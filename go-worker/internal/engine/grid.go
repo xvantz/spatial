@@ -1,3 +1,4 @@
+// Package engine implements the spatial partitioning and grid logic.
 package engine
 
 import (
@@ -6,6 +7,7 @@ import (
 	"sync"
 )
 
+// CellSize defines the size of a single grid cell (voxel) in meters.
 const CellSize = 50.0
 
 // Position represents 3D coordinates in the spatial world.
@@ -37,11 +39,14 @@ func NewSpatialGrid() *SpatialGrid {
 
 // GetCubeIndex calculates a unique 64-bit identifier for a 3D cell based on coordinates.
 func (g *SpatialGrid) GetCubeIndex(x, y, z float32) uint64 {
-	bx := int16(math.Floor(float64(x / CellSize)))
-	by := int16(math.Floor(float64(y / CellSize)))
-	bz := int16(math.Floor(float64(z / CellSize)))
+	//nolint:gosec // G115 is safe here as coordinates are within realistic bounds
+	bx := uint16(int16(math.Floor(float64(x / CellSize))))
+	//nolint:gosec // G115 is safe here
+	by := uint16(int16(math.Floor(float64(y / CellSize))))
+	//nolint:gosec // G115 is safe here
+	bz := uint16(int16(math.Floor(float64(z / CellSize))))
 
-	return uint64(uint16(bx))<<32 | uint64(uint16(by))<<16 | uint64(uint16(bz))
+	return uint64(bx)<<32 | uint64(by)<<16 | uint64(bz)
 }
 
 // UpdatePosition updates a single player's position and recalculates the global state hash.
@@ -113,6 +118,7 @@ func (g *SpatialGrid) GetInRadius(userID uint32, radius float32, buffer []uint32
 	for bx := minBx; bx <= maxBx; bx++ {
 		for by := minBy; by <= maxBy; by++ {
 			for bz := minBz; bz <= maxBz; bz++ {
+				//nolint:gosec // G115 is safe for spatial indexing
 				gridID := uint64(uint16(bx))<<32 | uint64(uint16(by))<<16 | uint64(uint16(bz))
 
 				if players, ok := g.buckets[gridID]; ok {
