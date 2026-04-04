@@ -23,13 +23,13 @@ func TestHashPlayer(t *testing.T) {
 	if h1 == h4 {
 		t.Error("hashes should be different for different X")
 	}
-	
+
 	// Change position (Y)
 	h5 := HashPlayer(1, 10.5, 21.5, 30.5)
 	if h1 == h5 {
 		t.Error("hashes should be different for different Y")
 	}
-	
+
 	// Change position (Z)
 	h6 := HashPlayer(1, 10.5, 20.5, 31.5)
 	if h1 == h6 {

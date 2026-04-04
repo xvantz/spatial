@@ -77,13 +77,13 @@ func TestSpatialGrid_BulkUpdate(t *testing.T) {
 	// Initial players
 	grid.UpdatePosition(1, 0, 0, 0)
 	grid.UpdatePosition(2, 50, 50, 50)
-	
+
 	hashBefore := grid.GetTotalHash()
 
 	// Move them both
 	grid.UpdatePosition(1, 1, 1, 1)
 	grid.UpdatePosition(2, 51, 51, 51)
-	
+
 	hashAfter := grid.GetTotalHash()
 	if hashBefore == hashAfter {
 		t.Error("hash should change after bulk move simulation")
@@ -110,7 +110,7 @@ func TestSpatialGrid_CommutativeHash(t *testing.T) {
 func BenchmarkSpatialGrid_GetInRadius(b *testing.B) {
 	grid := NewSpatialGrid()
 	numPlayers := 1000
-	
+
 	for i := 0; i < numPlayers; i++ {
 		grid.UpdatePosition(uint32(i), float32(i), float32(i), float32(i))
 	}
