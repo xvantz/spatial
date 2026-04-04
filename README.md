@@ -79,6 +79,10 @@ cd go-worker
 export NATS_URL=nats://localhost:4222
 go run ./cmd/coprocessor/main.go
 ```
+To run tests:
+```bash
+go test ./...
+```
 
 #### Node-Plane (Master)
 Navigate to the `node-plane` directory, install dependencies, and start the simulation:
