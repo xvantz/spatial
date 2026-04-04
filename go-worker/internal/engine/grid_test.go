@@ -1,8 +1,8 @@
 package engine
 
 import (
-	"testing"
 	spatialv1 "spatial/gen/spatial/v1"
+	"testing"
 )
 
 func TestSpatialGrid_UpdateAndHash(t *testing.T) {
@@ -134,7 +134,7 @@ func BenchmarkSpatialGrid_BulkUpdate_1000(b *testing.B) {
 	players := make([]*spatialv1.PlayerDelta, 1000)
 	for i := 0; i < 1000; i++ {
 		players[i] = &spatialv1.PlayerDelta{
-			UserId: uint32(i),
+			UserId:   uint32(i),
 			Position: &spatialv1.Vector3{X: float32(i), Y: float32(i), Z: 0},
 		}
 	}
