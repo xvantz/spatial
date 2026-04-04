@@ -5,13 +5,6 @@ run:
   tests: true
   allow-parallel-runners: true
 
-issues:
-  exclude-dirs:
-    - gen
-  exclude-use-default: false
-  max-issues-per-linter: 0
-  max-same-issues: 0
-
 linters-settings:
   govet:
     enable:
@@ -69,6 +62,8 @@ formatters:
     - goimports
 
 issues:
+  exclude-dirs:
+    - gen
   exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
