@@ -15,6 +15,32 @@ In high-load real-time applications (like MMOs or simulation engines), Node.js o
 
 ## System Architecture
 
+```mermaid
+sequenceDiagram
+    participant NP as Node-Plane (Master)
+    participant NATS as NATS Broker
+    participant GW as Go-Worker (Coprocessor)
+
+    Note over NP: 1. Update positions (40ms tick)
+    Note over NP: 2. Update Local XOR Hash
+    
+    NP->>NATS: Publish spatial.telemetry (TelemetryBatch + Hash)
+    NATS->>GW: Forward Telemetry
+    
+    Note over GW: 3. BulkUpdate Spatial Grid
+    Note over GW: 4. Sync Remote XOR Hash
+
+    NP->>NATS: Request spatial.query.visibility (BatchQuery)
+    NATS->>GW: Forward Query
+    
+    Note over GW: 5. O(1) Grid Proximity Search
+    GW->>NATS: Reply VisibilityResponse (Neighbors + Worker Hash)
+    NATS->>NP: Forward Response
+
+    Note over NP: 6. Desync Detection (History Hash Check)
+    Note over NP: 7. If Desync -> Full Sync next tick
+```
+
 The system consists of two main components communicating over **NATS** using **Protocol Buffers**:
 
 1.  **Node-Plane (TypeScript/Node.js)**:
