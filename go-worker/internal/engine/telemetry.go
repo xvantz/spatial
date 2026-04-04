@@ -1,3 +1,4 @@
+// Package engine implements the spatial partitioning and grid logic.
 package engine
 
 import (
@@ -21,6 +22,7 @@ type TelemetryHandler struct {
 	grid       *SpatialGrid
 }
 
+// NewTelemetryHandler initializes a new telemetry handler with its own grid and object pool.
 func NewTelemetryHandler() *TelemetryHandler {
 	handler := &TelemetryHandler{
 		pool: sync.Pool{
@@ -110,5 +112,7 @@ func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
 		return
 	}
 
-	msg.Respond(respBytes)
+	if err := msg.Respond(respBytes); err != nil {
+		log.Printf("[Telemetry] Error responding to query: %v", err)
+	}
 }
