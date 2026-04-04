@@ -125,6 +125,7 @@ func benchmarkGetInRadius(b *testing.B, numPlayers int) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// Query in the middle
+		//nolint:gosec // G115 is safe for benchmark indices
 		_ = grid.GetInRadius(uint32(numPlayers/2), 50.0, buffer)
 	}
 }
