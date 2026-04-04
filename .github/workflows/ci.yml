@@ -26,10 +26,13 @@ jobs:
       - name: Generate Protobuf code
         run: |
           cd ..
-          buf generate
+          buf generate proto
 
       - name: Update go modules
         run: go mod tidy
+
+      - name: Build project to check types
+        run: go build ./...
 
       - name: Go Format Check
         run: |
@@ -68,7 +71,7 @@ jobs:
       - name: Generate Protobuf code
         run: |
           cd ..
-          buf generate
+          buf generate proto
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
