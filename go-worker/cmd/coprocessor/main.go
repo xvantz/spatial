@@ -23,7 +23,7 @@ func main() {
 
 	broker, err := transport.NewBroker(natsURL)
 	if err != nil {
-		log.Fatalf("[Fatal] Can`t start transport: %v", err)
+		log.Fatalf("[Fatal] Can't start transport: %v", err)
 	}
 
 	defer broker.Shutdown()
