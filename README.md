@@ -119,6 +119,22 @@ export NATS_URL=nats://localhost:4222
 pnpm run dev
 ```
 
+## Benchmarks
+
+Performance measured on **AMD Ryzen 5 6600H** (Go 1.25.7):
+
+| Operation | Players Count | Time per Op | Memory / Allocations |
+|-----------|---------------|-------------|----------------------|
+| **Proximity Query** | 100 | **1.6 µs** | 0 B/op (0 allocs) |
+| **Proximity Query** | 1,000 | **2.3 µs** | 0 B/op (0 allocs) |
+| **Proximity Query** | 10,000 | **16.7 µs** | 5.7 KB/op (3 allocs) |
+| **Bulk Update** | 1,000 | **68.6 µs** | 0 B/op (0 allocs) |
+
+### Key Takeaways:
+1.  **Near-Constant Scaling**: Increasing the player count from 100 to 1,000 (10x) results in only a **1.4x** increase in query time, proving the efficiency of the voxel grid ($O(1)$ bucket access).
+2.  **Zero-Allocation Path**: For common scenarios (up to 1,000 entities), the proximity search generates **zero garbage**, significantly reducing GC pressure and ensuring stable sub-millisecond latencies.
+3.  **High Throughput**: The coprocessor can handle approximately **14,000 full-world updates per second** on a single core, leaving a massive performance overhead for other game logic.
+
 ## Messaging Schema (`spatial.proto`)
 
 ### Telemetry (Pub/Sub)

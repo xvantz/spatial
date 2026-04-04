@@ -2,6 +2,7 @@ package engine
 
 import (
 	"testing"
+	spatialv1 "spatial/gen/spatial/v1"
 )
 
 func TestSpatialGrid_UpdateAndHash(t *testing.T) {
@@ -107,17 +108,39 @@ func TestSpatialGrid_CommutativeHash(t *testing.T) {
 	}
 }
 
-func BenchmarkSpatialGrid_GetInRadius(b *testing.B) {
-	grid := NewSpatialGrid()
-	numPlayers := 1000
+func BenchmarkSpatialGrid_GetInRadius_100(b *testing.B)   { benchmarkGetInRadius(b, 100) }
+func BenchmarkSpatialGrid_GetInRadius_1000(b *testing.B)  { benchmarkGetInRadius(b, 1000) }
+func BenchmarkSpatialGrid_GetInRadius_10000(b *testing.B) { benchmarkGetInRadius(b, 10000) }
 
+func benchmarkGetInRadius(b *testing.B, numPlayers int) {
+	grid := NewSpatialGrid()
+	// Spread players across a 1000x1000 area
 	for i := 0; i < numPlayers; i++ {
-		grid.UpdatePosition(uint32(i), float32(i), float32(i), float32(i))
+		x := float32(i % 1000)
+		y := float32((i / 1000) % 1000)
+		grid.UpdatePosition(uint32(i), x, y, 0)
 	}
 
 	buffer := make([]uint32, 0, 100)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = grid.GetInRadius(0, 100.0, buffer)
+		// Query in the middle
+		_ = grid.GetInRadius(uint32(numPlayers/2), 50.0, buffer)
+	}
+}
+
+func BenchmarkSpatialGrid_BulkUpdate_1000(b *testing.B) {
+	grid := NewSpatialGrid()
+	players := make([]*spatialv1.PlayerDelta, 1000)
+	for i := 0; i < 1000; i++ {
+		players[i] = &spatialv1.PlayerDelta{
+			UserId: uint32(i),
+			Position: &spatialv1.Vector3{X: float32(i), Y: float32(i), Z: 0},
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		grid.BulkUpdate(players)
 	}
 }
