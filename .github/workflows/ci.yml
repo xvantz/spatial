@@ -28,6 +28,9 @@ jobs:
           cd ..
           buf generate
 
+      - name: Update go modules
+        run: go mod tidy
+
       - name: Go Format Check
         run: |
           if [ -n "$(gofmt -l .)" ]; then
