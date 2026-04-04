@@ -20,8 +20,11 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "1.25.7"
+          cache-dependency-path: go-worker/go.mod
 
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate Protobuf code
         run: |
@@ -67,6 +70,8 @@ jobs:
           bun-version: latest
 
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate Protobuf code
         run: |
