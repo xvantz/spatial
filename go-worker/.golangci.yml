@@ -2,34 +2,8 @@ version: "2"
 
 run:
   timeout: 5m
-  tests: true
-  allow-parallel-runners: true
-
-linters-settings:
-  govet:
-    enable:
-      - shadow
-  gocyclo:
-    min-complexity: 15
-  dupl:
-    threshold: 100
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  misspell:
-    locale: US
-  lll:
-    line-length: 120
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - experimental
-      - opinionated
-      - performance
-      - style
 
 linters:
-  disable-all: true
   enable:
     - bodyclose
     - dogsled
@@ -55,15 +29,30 @@ linters:
     - unparam
     - unused
     - whitespace
+  settings:
+    govet:
+      enable:
+        - shadow
+    gocyclo:
+      min-complexity: 15
+    dupl:
+      threshold: 100
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    misspell:
+      locale: US
+    lll:
+      line-length: 120
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
 
 formatters:
   enable:
     - gofmt
     - goimports
-
-issues:
-  exclude-dirs:
-    - gen
-  exclude-use-default: false
-  max-issues-per-linter: 0
-  max-same-issues: 0

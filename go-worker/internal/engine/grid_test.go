@@ -112,6 +112,7 @@ func BenchmarkSpatialGrid_GetInRadius(b *testing.B) {
 	numPlayers := 1000
 
 	for i := 0; i < numPlayers; i++ {
+		//nolint:gosec // G115 is safe for benchmark indices
 		grid.UpdatePosition(uint32(i), float32(i), float32(i), float32(i))
 	}
 

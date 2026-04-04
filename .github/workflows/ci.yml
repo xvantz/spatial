@@ -34,6 +34,7 @@ jobs:
         with:
           version: latest
           working-directory: go-worker
+          args: --exclude-dirs=gen
 
       - name: Run Tests
         run: go test -v ./...
