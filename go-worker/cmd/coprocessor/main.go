@@ -1,3 +1,4 @@
+// Package main is the entry point for the spatial coprocessor application.
 package main
 
 import (
@@ -29,11 +30,13 @@ func main() {
 
 	_, err = broker.Subscribe("spatial.telemetry", telemetry.HandleNatsMessage)
 	if err != nil {
-		log.Fatalf("[Fatal] Error subscribe to spatial.telemetry: %v", err)
+		log.Printf("[Fatal] Error subscribe to spatial.telemetry: %v", err)
+		return
 	}
 	_, err = broker.Subscribe("spatial.query.visibility", telemetry.HandleVisibilityBatchQuery)
 	if err != nil {
-		log.Fatalf("[Fatal] Error subscribe to spatial.query.visibility: %v", err)
+		log.Printf("[Fatal] Error subscribe to spatial.query.visibility: %v", err)
+		return
 	}
 
 	<-sigChan
