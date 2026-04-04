@@ -10,6 +10,7 @@ const (
 	prime64  = 1099511628211
 )
 
+// HashPlayer calculates a commutative XOR hash for a player's ID and coordinates.
 func HashPlayer(userID uint32, x, y, z float32) uint64 {
 	h := uint64(offset64)
 
