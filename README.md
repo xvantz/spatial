@@ -44,6 +44,37 @@ To ensure the Node-Plane and Go-Worker are always in sync without sending the fu
 -   **Validation**: When a Visibility Query response arrives from Go, Node-Plane checks if the returned `StateHash` exists in its history.
 -   **Recovery**: If the remote hash is not found in history, a **Full Synchronization** is triggered, dumping all entity positions to the Go-Worker in the next tick.
 
+## Tech Stack
+
+- **Transport**: [NATS](https://nats.io/) (Pub/Sub and Req/Rep)
+- **Serialization**: [Protocol Buffers (v3)](https://protobuf.dev/)
+- **Node-Plane**: Node.js (v20+), Bun, TypeScript
+- **Go-Worker**: Go (v1.25+)
+- **Protobuf Toolchain**: [Buf](https://buf.build/)
+
+## Getting Started
+
+### 1. Infrastructure
+Spin up the NATS message broker:
+```bash
+docker compose up -d
+```
+
+### 2. Go-Worker (Coprocessor)
+Navigate to the `go-worker` directory and run the service:
+```bash
+cd go-worker
+go run ./cmd/coprocessor/main.go
+```
+
+### 3. Node-Plane (Master)
+Navigate to the `node-plane` directory, install dependencies, and start the simulation:
+```bash
+cd node-plane
+pnpm install
+pnpm run dev
+```
+
 ## Messaging Schema (`spatial.proto`)
 
 ### Telemetry (Pub/Sub)
@@ -71,3 +102,7 @@ The Go-Worker implements a voxel grid with a configurable `CellSize` (default: 5
 ### Concurrency Model
 -   Go uses a `sync.RWMutex` to allow multiple concurrent visibility queries while protecting updates.
 -   `sync.Pool` is used for Protobuf message objects to minimize Garbage Collection (GC) overhead during high-frequency telemetry.
+
+## License
+
+MIT - See [LICENSE](LICENSE) for details.
