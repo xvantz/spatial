@@ -3,7 +3,7 @@ package transport
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -22,10 +22,10 @@ func NewBroker(url string) (*Broker, error) {
 		nats.PingInterval(20*time.Second),
 		nats.MaxPingsOutstanding(3),
 		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
-			log.Printf("[NATS] Disconnected: %v", err)
+			slog.Warn("nats disconnected", "error", err)
 		}),
 		nats.ReconnectHandler(func(nc *nats.Conn) {
-			log.Printf("[NATS] Reconnected: %s", nc.ConnectedUrl())
+			slog.Info("nats reconnected", "url", nc.ConnectedUrl())
 		}),
 	)
 
@@ -57,10 +57,12 @@ func (b *Broker) Subscribe(subject string, handler func(msg *nats.Msg)) (*nats.S
 func (b *Broker) NC() *nats.Conn {
 	return b.nc
 }
+
+// Shutdown gracefully closes the NATS connection.
 func (b *Broker) Shutdown() {
-	log.Println("[NATS] Start drain...")
+	slog.Info("nats drain starting")
 	if err := b.nc.Drain(); err != nil {
-		log.Printf("[NATS] Error closing connection: %v", err)
+		slog.Error("nats drain failed", "error", err)
 	}
-	log.Println("[NATS] Connection closed.")
+	slog.Info("nats connection closed")
 }

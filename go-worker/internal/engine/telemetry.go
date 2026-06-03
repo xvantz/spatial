@@ -3,7 +3,7 @@ package engine
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	spatialv1 "spatial/gen/spatial/v1"
 	"sync"
 	"sync/atomic"
@@ -54,7 +54,9 @@ func (h *TelemetryHandler) monitorRPS(ctx context.Context) {
 		case <-ticker.C:
 			count := h.batchCount.Swap(0)
 			if count > 0 {
-				log.Printf("[Telemetry] Processing rate: %d batches/sec", count/10)
+				slog.Info("telemetry processing rate",
+					"batches_per_sec", count/10,
+				)
 			}
 		case <-ctx.Done():
 			return
@@ -81,11 +83,11 @@ func (h *TelemetryHandler) StartHeartbeat(ctx context.Context, nc *nats.Conn) {
 				}
 				data, err := proto.Marshal(msg)
 				if err != nil {
-					log.Printf("[Heartbeat] Marshal error: %v", err)
+					slog.Error("heartbeat marshal failed", "error", err)
 					continue
 				}
 				if err := nc.Publish("spatial.health.heartbeat", data); err != nil {
-					log.Printf("[Heartbeat] Publish error: %v", err)
+					slog.Error("heartbeat publish failed", "error", err)
 				}
 			case <-ctx.Done():
 				return
@@ -122,7 +124,10 @@ func (h *TelemetryHandler) HandleNatsMessage(msg *nats.Msg) {
 
 	// Log desynchronization if detected (optional, but useful for monitoring).
 	if batch.StateHash != 0 && batch.StateHash != h.grid.GetTotalHash() {
-		log.Printf("[Sync] Desync detected. Remote: %v | Local: %v", batch.StateHash, h.grid.GetTotalHash())
+		slog.Warn("desync detected",
+			"remote_hash", batch.StateHash,
+			"local_hash", h.grid.GetTotalHash(),
+		)
 	}
 
 	h.batchCount.Add(1)
@@ -133,12 +138,15 @@ func (h *TelemetryHandler) HandleNatsMessage(msg *nats.Msg) {
 func (h *TelemetryHandler) HandleFullState(msg *nats.Msg) {
 	batch := &spatialv1.TelemetryBatch{}
 	if err := proto.Unmarshal(msg.Data, batch); err != nil {
-		log.Printf("[Handshake] Failed to unmarshal full state: %v", err)
+		slog.Error("handshake unmarshal failed", "error", err)
 		return
 	}
 
 	h.grid.BulkUpdate(batch.Players)
-	log.Printf("[Handshake] Full state applied: %d players (hash=%d)", len(batch.Players), h.grid.GetTotalHash())
+	slog.Info("full state applied",
+		"players", len(batch.Players),
+		"hash", h.grid.GetTotalHash(),
+	)
 }
 
 // HandlePlayerRemove removes a player from the grid when the node-plane
@@ -150,7 +158,10 @@ func (h *TelemetryHandler) HandlePlayerRemove(msg *nats.Msg) {
 	}
 
 	h.grid.RemovePlayer(remove.UserId)
-	log.Printf("[PlayerRemove] Player %d removed from grid (hash=%d)", remove.UserId, h.grid.GetTotalHash())
+	slog.Info("player removed",
+		"user_id", remove.UserId,
+		"hash", h.grid.GetTotalHash(),
+	)
 }
 
 // HandleVisibilityBatchQuery processes visibility range requests from clients.
@@ -195,6 +206,6 @@ func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
 	}
 
 	if err := msg.Respond(respBytes); err != nil {
-		log.Printf("[Telemetry] Error responding to query: %v", err)
+		slog.Error("query response failed", "error", err)
 	}
 }

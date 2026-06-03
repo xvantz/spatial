@@ -3,7 +3,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	spatialv1 "spatial/gen/spatial/v1"
@@ -17,7 +17,10 @@ import (
 )
 
 func main() {
-	log.Println("[Bootstrap] Start Spatial Coprocessor...")
+	// Configure structured text logging to stderr.
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	slog.Info("starting spatial coprocessor")
 
 	natsURL := os.Getenv("NATS_URL")
 	if natsURL == "" {
@@ -26,7 +29,8 @@ func main() {
 
 	broker, err := transport.NewBroker(natsURL)
 	if err != nil {
-		log.Fatalf("[Fatal] Can't start transport: %v", err)
+		slog.Error("can't start transport", "error", err)
+		os.Exit(1)
 	}
 	defer broker.Shutdown()
 
@@ -45,18 +49,18 @@ func main() {
 
 	_, err = broker.Subscribe("spatial.telemetry", telemetry.HandleNatsMessage)
 	if err != nil {
-		log.Printf("[Fatal] Error subscribe to spatial.telemetry: %v", err)
+		slog.Error("subscribe failed", "subject", "spatial.telemetry", "error", err)
 		return
 	}
 	_, err = broker.Subscribe("spatial.query.visibility", telemetry.HandleVisibilityBatchQuery)
 	if err != nil {
-		log.Printf("[Fatal] Error subscribe to spatial.query.visibility: %v", err)
+		slog.Error("subscribe failed", "subject", "spatial.query.visibility", "error", err)
 		return
 	}
 
 	_, err = broker.Subscribe("spatial.player.remove", telemetry.HandlePlayerRemove)
 	if err != nil {
-		log.Printf("[Fatal] Error subscribe to spatial.player.remove: %v", err)
+		slog.Error("subscribe failed", "subject", "spatial.player.remove", "error", err)
 		return
 	}
 
@@ -64,32 +68,32 @@ func main() {
 	go func() {
 		reqData, err := proto.Marshal(&spatialv1.HandshakeRequest{})
 		if err != nil {
-			log.Printf("[Handshake] Failed to marshal request: %v", err)
+			slog.Error("handshake marshal failed", "error", err)
 			return
 		}
 
 		for i := 0; i < 5; i++ {
 			select {
 			case <-ctx.Done():
-				log.Println("[Handshake] Shutdown requested, aborting handshake")
+				slog.Info("handshake aborted", "reason", "shutdown")
 				return
 			default:
 			}
 
 			resp, err := broker.Request("spatial.handshake.sync", reqData, 2*time.Second)
 			if err != nil {
-				log.Printf("[Handshake] Waiting for node-plane... (attempt %d/5)", i+1)
+				slog.Info("handshake retry", "attempt", i+1, "max", 5)
 				time.Sleep(1 * time.Second)
 				continue
 			}
 			telemetry.HandleFullState(resp)
 			return
 		}
-		log.Println("[Handshake] Failed after 5 retries — continuing without initial state")
+		slog.Warn("handshake failed after 5 retries — continuing without initial state")
 	}()
 
 	<-sigChan
-	log.Println("\n[Shutdown] Get signal. Starting graceful shutdown...")
+	slog.Info("received signal, starting graceful shutdown")
 
 	// Cancel context → all context-aware goroutines (monitorRPS, handshake) exit.
 	cancel()
@@ -98,5 +102,5 @@ func main() {
 	broker.Shutdown()
 
 	// telemetry.Shutdown() runs via defer — waits for monitorRPS to finish.
-	log.Println("[Shutdown] Coprocessor stopped.")
+	slog.Info("coprocessor stopped")
 }
