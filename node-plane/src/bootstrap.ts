@@ -1,7 +1,10 @@
 import { createNatsConnection } from "./infra/nats";
 import { generateFakeUsers } from "./modules/generator/generateFakeUsers";
-import { createListener } from "./modules/listener/listener";
+import { createSpatialSyncClient } from "./spatial/SpatialSyncClient";
+import { createSimulationEngine } from "./simulation/SimulationEngine";
 import { createVisibilityPinger } from "./modules/visibility/visibility";
+
+const TICK_RATE_MS = 40;
 
 const bootstrap = async () => {
   try {
@@ -13,14 +16,29 @@ const bootstrap = async () => {
     const fakeUsers = generateFakeUsers(1000);
     console.log("[bootstrap] generated fake users.");
 
-    const listener = createListener(nats, fakeUsers);
-    console.log("[bootstrap] listeners started.");
+    const syncClient = createSpatialSyncClient(nats);
+    const simulation = createSimulationEngine(fakeUsers);
+
+    // Initialise hashes for all users
+    syncClient.sync(fakeUsers);
+    console.log("[bootstrap] hashes initialized.");
+
+    // Run simulation in a fixed tick loop
+    let lastTickTime = performance.now();
+    const interval = setInterval(() => {
+      const now = performance.now();
+      const dt = (now - lastTickTime) / 1000;
+      lastTickTime = now;
+
+      const moved = simulation.tick(dt);
+      syncClient.sync(moved);
+    }, TICK_RATE_MS);
 
     const visibility = createVisibilityPinger(
       nats,
       fakeUsers,
-      listener.getCurrentHash,
-      listener.checkHashInHistory,
+      syncClient.getCurrentHash,
+      syncClient.checkHashInHistory,
     );
     console.log("[bootstrap] visibility pinger started.");
 
@@ -28,7 +46,9 @@ const bootstrap = async () => {
       console.log(`[Shutdown] Getted ${signal}. Stopped process...`);
 
       try {
-        listener.cleanup();
+        clearInterval(interval);
+        simulation.cleanup();
+        syncClient.cleanup();
         visibility.cleanup();
 
         await nats.drain();

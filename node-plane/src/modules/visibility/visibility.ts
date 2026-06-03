@@ -4,7 +4,7 @@ import {
   VisibilityBatchQuery,
   VisibilityBatchResponse,
 } from "../../../gen/spatial/v1/spatial";
-import { requestFullSync } from "../listener/listener";
+import { requestFullSync } from "../../simulation/SimulationEngine";
 
 export const createVisibilityPinger = (
   nats: NatsConnection,
