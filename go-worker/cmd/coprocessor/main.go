@@ -9,6 +9,7 @@ import (
 	spatialv1 "spatial/gen/spatial/v1"
 	"spatial/internal/engine"
 	"spatial/internal/transport"
+	"sync"
 	"syscall"
 	"time"
 
@@ -65,7 +66,10 @@ func main() {
 	}
 
 	// ---- Handshake: request full state from node-plane ----
+	var handshakeWg sync.WaitGroup
+	handshakeWg.Add(1)
 	go func() {
+		defer handshakeWg.Done()
 		reqData, err := proto.Marshal(&spatialv1.HandshakeRequest{})
 		if err != nil {
 			slog.Error("handshake marshal failed", "error", err)
@@ -101,6 +105,9 @@ func main() {
 	// Drain NATS connection — wait for in-flight messages to finish.
 	broker.Shutdown()
 
-	// telemetry.Shutdown() runs via defer — waits for monitorRPS to finish.
+	// Wait for the handshake goroutine to finish (it may be blocked on a NATS request).
+	handshakeWg.Wait()
+
+	// telemetry.Shutdown() runs via defer — waits for monitorRPS and heartbeat to finish.
 	slog.Info("coprocessor stopped")
 }
