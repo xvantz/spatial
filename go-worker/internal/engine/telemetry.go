@@ -76,6 +76,19 @@ func (h *TelemetryHandler) HandleNatsMessage(msg *nats.Msg) {
 	h.batchCount.Add(1)
 }
 
+// HandleFullState processes a full state snapshot from the node-plane during
+// handshake. It bulk-replaces the grid with the complete set of players.
+func (h *TelemetryHandler) HandleFullState(msg *nats.Msg) {
+	batch := &spatialv1.TelemetryBatch{}
+	if err := proto.Unmarshal(msg.Data, batch); err != nil {
+		log.Printf("[Handshake] Failed to unmarshal full state: %v", err)
+		return
+	}
+
+	h.grid.BulkUpdate(batch.Players)
+	log.Printf("[Handshake] Full state applied: %d players (hash=%d)", len(batch.Players), h.grid.GetTotalHash())
+}
+
 // HandleVisibilityBatchQuery processes visibility range requests from clients.
 func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
 	if msg.Reply == "" {

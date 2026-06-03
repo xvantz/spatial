@@ -1,4 +1,4 @@
-import { NatsConnection } from "@nats-io/transport-node";
+import { NatsConnection, Subscription } from "@nats-io/transport-node";
 import { IUser } from "../types/user";
 import { TelemetryBatch } from "../../gen/spatial/v1/spatial";
 import { hashPlayer } from "../modules/generator/hash";
@@ -21,6 +21,12 @@ export interface ISpatialSyncClient {
    */
   sync(users: IUser[]): void;
 
+  /**
+   * Subscribe to handshake requests from the Go worker.
+   * When a sync_request arrives, responds with a full state snapshot.
+   */
+  setupHandshake(getAllUsers: () => IUser[]): void;
+
   /** Clean up internal state. */
   cleanup(): void;
 }
@@ -30,6 +36,7 @@ export function createSpatialSyncClient(nats: NatsConnection): ISpatialSyncClien
   const playerHashes = new Map<number, bigint>();
   const hashHistory = new Set<bigint>();
   const maxHistorySize = 100;
+  let handshakeSub: Subscription | null = null;
 
   const getCurrentHash = (): bigint => totalHash;
 
@@ -64,10 +71,35 @@ export function createSpatialSyncClient(nats: NatsConnection): ISpatialSyncClien
     nats.publish("spatial.telemetry", TelemetryBatch.encode(telemetryMessage).finish());
   };
 
+  const setupHandshake = (getAllUsers: () => IUser[]): void => {
+    if (handshakeSub) return; // already registered
+
+    handshakeSub = nats.subscribe("spatial.handshake.sync", {
+      callback: (_err, msg) => {
+        const allUsers = getAllUsers();
+        const telemetry: TelemetryBatch = {
+          players: allUsers.map((u) => ({
+            userId: u.id,
+            position: u.position,
+          })),
+          stateHash: totalHash.toString(),
+        };
+        msg.respond(TelemetryBatch.encode(telemetry).finish());
+        console.log(
+          `[Handshake] Responded with ${allUsers.length} players (hash=${totalHash})`,
+        );
+      },
+    });
+  };
+
   const cleanup = (): void => {
+    if (handshakeSub) {
+      handshakeSub.unsubscribe();
+      handshakeSub = null;
+    }
     playerHashes.clear();
     hashHistory.clear();
   };
 
-  return { getCurrentHash, checkHashInHistory, sync, cleanup };
+  return { getCurrentHash, checkHashInHistory, sync, setupHandshake, cleanup };
 }

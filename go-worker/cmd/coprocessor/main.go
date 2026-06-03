@@ -5,12 +5,14 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	spatialv1 "spatial/gen/spatial/v1"
 	"spatial/internal/engine"
 	"spatial/internal/transport"
 	"syscall"
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"google.golang.org/protobuf/proto"
 )
 
 func main() {
@@ -43,6 +45,27 @@ func main() {
 		log.Printf("[Fatal] Error subscribe to spatial.query.visibility: %v", err)
 		return
 	}
+
+	// ---- Handshake: request full state from node-plane ----
+	go func() {
+		reqData, err := proto.Marshal(&spatialv1.HandshakeRequest{})
+		if err != nil {
+			log.Printf("[Handshake] Failed to marshal request: %v", err)
+			return
+		}
+
+		for i := 0; i < 5; i++ {
+			resp, err := broker.Request("spatial.handshake.sync", reqData, 2*time.Second)
+			if err != nil {
+				log.Printf("[Handshake] Waiting for node-plane... (attempt %d/5)", i+1)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			telemetry.HandleFullState(resp)
+			return
+		}
+		log.Println("[Handshake] Failed after 5 retries — continuing without initial state")
+	}()
 
 	<-sigChan
 	log.Println("\n[Shutdown] Get signal. Start closing...")

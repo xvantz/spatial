@@ -23,6 +23,10 @@ const bootstrap = async () => {
     syncClient.sync(fakeUsers);
     console.log("[bootstrap] hashes initialized.");
 
+    // Register handshake responder for Go worker sync requests
+    syncClient.setupHandshake(() => simulation.getAllUsers());
+    console.log("[bootstrap] handshake listener ready.");
+
     // Run simulation in a fixed tick loop
     let lastTickTime = performance.now();
     const interval = setInterval(() => {

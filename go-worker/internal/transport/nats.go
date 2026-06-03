@@ -43,6 +43,11 @@ func (b *Broker) Publish(subject string, data []byte) error {
 	return b.nc.Publish(subject, data)
 }
 
+// Request sends a request and waits for a reply on an auto-managed inbox.
+func (b *Broker) Request(subject string, data []byte, timeout time.Duration) (*nats.Msg, error) {
+	return b.nc.Request(subject, data, timeout)
+}
+
 // Subscribe registers a listener for the specified subject.
 func (b *Broker) Subscribe(subject string, handler func(msg *nats.Msg)) (*nats.Subscription, error) {
 	return b.nc.Subscribe(subject, handler)

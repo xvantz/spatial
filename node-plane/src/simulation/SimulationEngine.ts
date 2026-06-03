@@ -18,6 +18,9 @@ export interface ISimulationEngine {
   /** Advance one simulation tick. Returns users whose positions changed. */
   tick(dt: number): IUser[];
 
+  /** Return all simulated users (the full world state). */
+  getAllUsers(): IUser[];
+
   /** Clean up internal state. */
   cleanup(): void;
 }
@@ -64,9 +67,11 @@ export function createSimulationEngine(users: IUser[]): ISimulationEngine {
     return batchToSync;
   };
 
+  const getAllUsers = (): IUser[] => users;
+
   const cleanup = (): void => {
     dirtySet.clear();
   };
 
-  return { tick, cleanup };
+  return { tick, getAllUsers, cleanup };
 }

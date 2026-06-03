@@ -42,3 +42,12 @@ message ColshapeEvent {
   string colshape_id = 2;
   bool is_enter = 3;
 }
+
+message HandshakeRequest {
+  // Empty — worker just announces presence
+}
+
+message HandshakeResponse {
+  uint64 state_hash = 1;
+  repeated PlayerDelta players = 2;
+}
