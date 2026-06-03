@@ -2,6 +2,7 @@
 package engine
 
 import (
+	"context"
 	"log"
 	spatialv1 "spatial/gen/spatial/v1"
 	"sync"
@@ -20,34 +21,53 @@ type TelemetryHandler struct {
 	pool       sync.Pool
 	batchCount atomic.Uint64
 	grid       *SpatialGrid
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
 }
 
 // NewTelemetryHandler initializes a new telemetry handler with its own grid and object pool.
-func NewTelemetryHandler() *TelemetryHandler {
+func NewTelemetryHandler(ctx context.Context) *TelemetryHandler {
+	ctx, cancel := context.WithCancel(ctx)
 	handler := &TelemetryHandler{
 		pool: sync.Pool{
 			New: func() any {
 				return &spatialv1.TelemetryBatch{}
 			},
 		},
-		grid: NewSpatialGrid(),
+		grid:   NewSpatialGrid(),
+		cancel: cancel,
 	}
 
-	go handler.monitorRPS()
+	handler.wg.Add(1)
+	go handler.monitorRPS(ctx)
 
 	return handler
 }
 
-func (h *TelemetryHandler) monitorRPS() {
+func (h *TelemetryHandler) monitorRPS(ctx context.Context) {
+	defer h.wg.Done()
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		count := h.batchCount.Swap(0)
-		if count > 0 {
-			log.Printf("[Telemetry] Processing rate: %d batches/sec", count/10)
+	for {
+		select {
+		case <-ticker.C:
+			count := h.batchCount.Swap(0)
+			if count > 0 {
+				log.Printf("[Telemetry] Processing rate: %d batches/sec", count/10)
+			}
+		case <-ctx.Done():
+			return
 		}
 	}
+}
+
+// Shutdown cancels the handler's internal context and waits for background
+// goroutines to finish. Call this before stopping the NATS connection so
+// no handler goroutines are left running.
+func (h *TelemetryHandler) Shutdown() {
+	h.cancel()
+	h.wg.Wait()
 }
 
 // HandleNatsMessage processes incoming telemetry batches and maintains world state hash.

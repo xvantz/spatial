@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
@@ -27,13 +28,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("[Fatal] Can't start transport: %v", err)
 	}
-
 	defer broker.Shutdown()
+
+	// Root context — cancel triggers graceful shutdown of all goroutines.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	telemetry := engine.NewTelemetryHandler()
+	telemetry := engine.NewTelemetryHandler(ctx)
+	defer telemetry.Shutdown()
 
 	_, err = broker.Subscribe("spatial.telemetry", telemetry.HandleNatsMessage)
 	if err != nil {
@@ -61,6 +66,13 @@ func main() {
 		}
 
 		for i := 0; i < 5; i++ {
+			select {
+			case <-ctx.Done():
+				log.Println("[Handshake] Shutdown requested, aborting handshake")
+				return
+			default:
+			}
+
 			resp, err := broker.Request("spatial.handshake.sync", reqData, 2*time.Second)
 			if err != nil {
 				log.Printf("[Handshake] Waiting for node-plane... (attempt %d/5)", i+1)
@@ -74,8 +86,14 @@ func main() {
 	}()
 
 	<-sigChan
-	log.Println("\n[Shutdown] Get signal. Start closing...")
+	log.Println("\n[Shutdown] Get signal. Starting graceful shutdown...")
 
-	time.Sleep(100 * time.Millisecond)
+	// Cancel context → all context-aware goroutines (monitorRPS, handshake) exit.
+	cancel()
+
+	// Drain NATS connection — wait for in-flight messages to finish.
+	broker.Shutdown()
+
+	// telemetry.Shutdown() runs via defer — waits for monitorRPS to finish.
 	log.Println("[Shutdown] Coprocessor stopped.")
 }
