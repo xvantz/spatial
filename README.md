@@ -114,9 +114,9 @@ go test ./...
 Navigate to the `node-plane` directory, install dependencies, and start the simulation:
 ```bash
 cd node-plane
-pnpm install
+bun install
 export NATS_URL=nats://localhost:4222
-pnpm run dev
+bun run dev
 ```
 
 ## Benchmarks

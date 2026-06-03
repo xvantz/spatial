@@ -4,7 +4,7 @@ FROM oven/bun:alpine AS builder
 WORKDIR /app
 
 # Copy lock files and workspace config
-COPY pnpm-lock.yaml package.json ./
+COPY bun.lock package.json ./
 
 # Install dependencies
 RUN bun install --frozen-lockfile

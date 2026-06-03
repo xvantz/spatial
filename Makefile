@@ -36,10 +36,10 @@ lint-go: ## Run linter for Go
 ## --- Node Plane (Master) ---
 
 install-node: ## Install Node.js dependencies
-	cd node-plane && pnpm install
+	cd node-plane && bun install
 
 run-node: ## Run Node-plane locally
-	cd node-plane && NATS_URL=$(NATS_URL) pnpm run dev
+	cd node-plane && NATS_URL=$(NATS_URL) bun run dev
 
 check-node: ## Check types in TypeScript
 	cd node-plane && bunx tsc --noEmit
