@@ -44,9 +44,12 @@ run-node: ## Run Node-plane locally
 check-node: ## Check types in TypeScript
 	cd node-plane && bunx tsc --noEmit
 
+test-node: ## Run Node.js tests
+	cd node-plane && bun test
+
 ## --- General Commands ---
 
-test: test-go ## Run all tests in the project
+test: test-go test-node ## Run all tests in the project
 
 bench-go: ## Run Go benchmarks
 	cd go-worker && go test -bench=. -benchmem ./internal/engine/...
