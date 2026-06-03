@@ -6,6 +6,12 @@ services:
       - "4222:4222"
       - "8222:8222"
     command: ["-c", "/etc/nats/nats.conf"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/varz > /dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     deploy:
       resources:
         reservations:
@@ -23,7 +29,14 @@ services:
       dockerfile: Dockerfile
     container_name: go-worker
     depends_on:
-      - nats
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     environment:
       - NATS_URL=nats://nats:4222
     networks:
@@ -36,8 +49,16 @@ services:
       dockerfile: Dockerfile
     container_name: node-plane
     depends_on:
-      - nats
-      - go-worker
+      nats:
+        condition: service_healthy
+      go-worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
     environment:
       - NATS_URL=nats://nats:4222
       - NODE_ENV=production
