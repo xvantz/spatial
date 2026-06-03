@@ -15,12 +15,19 @@ type Position struct {
 	X, Y, Z float32
 }
 
+// cellEntry stores a player together with their position inline,
+// avoiding an extra map lookup for position during proximity queries.
+type cellEntry struct {
+	UserID   uint32
+	Position Position
+}
+
 // SpatialGrid implements a voxel-based spatial partitioning system.
 // It uses a bucket-based approach for efficient proximity queries and
 // maintains a commutative XOR hash of the entire world state for synchronization.
 type SpatialGrid struct {
 	mu           sync.RWMutex
-	buckets      map[uint64][]uint32
+	buckets      map[uint64][]cellEntry
 	bucketIndex  map[uint32]int // userID -> index within its bucket slice, for O(1) swap-remove
 	reverseIndex map[uint32]uint64
 	positions    map[uint32]Position
@@ -31,7 +38,7 @@ type SpatialGrid struct {
 // NewSpatialGrid initializes a new grid with pre-allocated maps for performance.
 func NewSpatialGrid() *SpatialGrid {
 	return &SpatialGrid{
-		buckets:      make(map[uint64][]uint32, 10000),
+		buckets:      make(map[uint64][]cellEntry, 10000),
 		bucketIndex:  make(map[uint32]int, 1000),
 		reverseIndex: make(map[uint32]uint64, 1000),
 		positions:    make(map[uint32]Position, 1000),
@@ -41,12 +48,13 @@ func NewSpatialGrid() *SpatialGrid {
 
 // GetCubeIndex calculates a unique 64-bit identifier for a 3D cell based on coordinates.
 func (g *SpatialGrid) GetCubeIndex(x, y, z float32) uint64 {
+	invCellSize := float32(1.0 / CellSize)
 	//nolint:gosec // G115 is safe here as coordinates are within realistic bounds
-	bx := uint16(int16(math.Floor(float64(x / CellSize))))
+	bx := uint16(int16(math.Floor(float64(x * invCellSize))))
 	//nolint:gosec // G115 is safe here
-	by := uint16(int16(math.Floor(float64(y / CellSize))))
+	by := uint16(int16(math.Floor(float64(y * invCellSize))))
 	//nolint:gosec // G115 is safe here
-	bz := uint16(int16(math.Floor(float64(z / CellSize))))
+	bz := uint16(int16(math.Floor(float64(z * invCellSize))))
 
 	return uint64(bx)<<32 | uint64(by)<<16 | uint64(bz)
 }
@@ -89,7 +97,7 @@ func (g *SpatialGrid) updatePositionLocked(userID uint32, x, y, z float32) {
 			g.removeFromBucketLocked(userID, oldGridID)
 		}
 
-		g.buckets[newGridID] = append(g.buckets[newGridID], userID)
+		g.buckets[newGridID] = append(g.buckets[newGridID], cellEntry{UserID: userID, Position: Position{X: x, Y: y, Z: z}})
 		g.bucketIndex[userID] = len(g.buckets[newGridID]) - 1
 		g.reverseIndex[userID] = newGridID
 	}
@@ -110,38 +118,44 @@ func (g *SpatialGrid) GetInRadiusWithHash(userID uint32, radius float32, buffer 
 		return buffer, g.totalHash
 	}
 
-	minBx := int16(math.Floor(float64((centerPos.X - radius) / CellSize)))
-	maxBx := int16(math.Floor(float64((centerPos.X + radius) / CellSize)))
+	// Hoist center position to local float32 vars so the inner loop
+	// avoids struct field dereferences.
+	cx, cy, cz := centerPos.X, centerPos.Y, centerPos.Z
+	invCellSize := float32(1.0 / CellSize)
 
-	minBy := int16(math.Floor(float64((centerPos.Y - radius) / CellSize)))
-	maxBy := int16(math.Floor(float64((centerPos.Y + radius) / CellSize)))
-
-	minBz := int16(math.Floor(float64((centerPos.Z - radius) / CellSize)))
-	maxBz := int16(math.Floor(float64((centerPos.Z + radius) / CellSize)))
+	minBx := int16(math.Floor(float64((cx - radius) * invCellSize)))
+	maxBx := int16(math.Floor(float64((cx + radius) * invCellSize)))
+	minBy := int16(math.Floor(float64((cy - radius) * invCellSize)))
+	maxBy := int16(math.Floor(float64((cy + radius) * invCellSize)))
+	minBz := int16(math.Floor(float64((cz - radius) * invCellSize)))
+	maxBz := int16(math.Floor(float64((cz + radius) * invCellSize)))
 
 	radiusSq := radius * radius
 
 	for bx := minBx; bx <= maxBx; bx++ {
+		bxPart := uint64(uint16(bx)) << 32
 		for by := minBy; by <= maxBy; by++ {
+			//nolint:gosec // G115 is safe for spatial indexing
+			byPart := bxPart | uint64(uint16(by))<<16
 			for bz := minBz; bz <= maxBz; bz++ {
 				//nolint:gosec // G115 is safe for spatial indexing
-				gridID := uint64(uint16(bx))<<32 | uint64(uint16(by))<<16 | uint64(uint16(bz))
+				gridID := byPart | uint64(uint16(bz))
 
-				if players, ok := g.buckets[gridID]; ok {
-					for _, targetID := range players {
-						if targetID == userID {
+				if entries, ok := g.buckets[gridID]; ok {
+					for _, entry := range entries {
+						if entry.UserID == userID {
 							continue
 						}
 
-						targetPos := g.positions[targetID]
-
-						dx := targetPos.X - centerPos.X
-						dy := targetPos.Y - centerPos.Y
-						dz := targetPos.Z - centerPos.Z
+						// Read position directly from the bucket entry —
+						// avoids an expensive map lookup for every distance check.
+						dx := entry.Position.X - cx
+						dy := entry.Position.Y - cy
+						dz := entry.Position.Z - cz
 						distSq := dx*dx + dy*dy + dz*dz
 
 						if distSq <= radiusSq {
-							buffer = append(buffer, targetID)
+							buffer = append(buffer, entry.UserID)
 						}
 					}
 				}
@@ -169,9 +183,9 @@ func (g *SpatialGrid) removeFromBucketLocked(userID uint32, gridID uint64) {
 
 	lastIdx := len(bucket) - 1
 	if idx != lastIdx {
-		lastID := bucket[lastIdx]
-		bucket[idx] = lastID
-		g.bucketIndex[lastID] = idx
+		lastEntry := bucket[lastIdx]
+		bucket[idx] = lastEntry
+		g.bucketIndex[lastEntry.UserID] = idx
 	}
 
 	g.buckets[gridID] = bucket[:lastIdx]
