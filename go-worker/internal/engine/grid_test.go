@@ -145,3 +145,24 @@ func BenchmarkSpatialGrid_BulkUpdate_1000(b *testing.B) {
 		grid.BulkUpdate(players)
 	}
 }
+
+func TestSpatialGrid_GetInRadiusWithHash(t *testing.T) {
+	grid := NewSpatialGrid()
+
+	grid.UpdatePosition(1, 0, 0, 0)
+	grid.UpdatePosition(2, 10, 10, 10)
+	grid.UpdatePosition(3, 100, 100, 100)
+
+	hash := grid.GetTotalHash()
+
+	buffer := make([]uint32, 0, 10)
+	visible, returnedHash := grid.GetInRadiusWithHash(1, 20.0, buffer)
+
+	if len(visible) != 1 || visible[0] != 2 {
+		t.Errorf("expected [2], got %v", visible)
+	}
+
+	if returnedHash != hash {
+		t.Errorf("returned hash %d != GetTotalHash() %d", returnedHash, hash)
+	}
+}

@@ -92,8 +92,11 @@ func (g *SpatialGrid) updatePositionLocked(userID uint32, x, y, z float32) {
 	}
 }
 
-// GetInRadius performs a spherical proximity query, returning user IDs within the specified radius.
-func (g *SpatialGrid) GetInRadius(userID uint32, radius float32, buffer []uint32) []uint32 {
+// GetInRadiusWithHash performs a spherical proximity query, returning user IDs
+// within the specified radius AND the current world state hash atomically
+// under a single read lock. This ensures the returned hash is consistent with
+// the query results.
+func (g *SpatialGrid) GetInRadiusWithHash(userID uint32, radius float32, buffer []uint32) ([]uint32, uint64) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
@@ -101,7 +104,7 @@ func (g *SpatialGrid) GetInRadius(userID uint32, radius float32, buffer []uint32
 
 	centerPos, exists := g.positions[userID]
 	if !exists {
-		return buffer
+		return buffer, g.totalHash
 	}
 
 	minBx := int16(math.Floor(float64((centerPos.X - radius) / CellSize)))
@@ -143,7 +146,13 @@ func (g *SpatialGrid) GetInRadius(userID uint32, radius float32, buffer []uint32
 		}
 	}
 
-	return buffer
+	return buffer, g.totalHash
+}
+
+// GetInRadius performs a spherical proximity query, returning user IDs within the specified radius.
+func (g *SpatialGrid) GetInRadius(userID uint32, radius float32, buffer []uint32) []uint32 {
+	visible, _ := g.GetInRadiusWithHash(userID, radius, buffer)
+	return visible
 }
 
 func (g *SpatialGrid) removeFromBucketLocked(userID uint32, gridID uint64) {

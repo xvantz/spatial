@@ -87,11 +87,16 @@ func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
 		return
 	}
 
+	// Take a snapshot of the current state hash BEFORE processing queries.
+	// This ensures all query results in this batch are consistent with the
+	// returned hash — no partial writes between queries can skew it.
+	snapshotHash := h.grid.GetTotalHash()
+
 	results := make([]*spatialv1.VisibilityResult, 0, len(batchQuery.Queries))
 	workBuffer := make([]uint32, 0, 100)
 
 	for _, q := range batchQuery.Queries {
-		visibleIDs := h.grid.GetInRadius(q.UserId, q.Radius, workBuffer)
+		visibleIDs, _ := h.grid.GetInRadiusWithHash(q.UserId, q.Radius, workBuffer)
 
 		finalIDs := make([]uint32, len(visibleIDs))
 		copy(finalIDs, visibleIDs)
@@ -104,7 +109,7 @@ func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
 
 	response := &spatialv1.VisibilityBatchResponse{
 		Results:   results,
-		StateHash: h.grid.GetTotalHash(),
+		StateHash: snapshotHash,
 	}
 
 	respBytes, err := proto.Marshal(response)
