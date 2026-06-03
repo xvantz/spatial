@@ -10,16 +10,13 @@ jobs:
   go-worker:
     name: Go Worker (Coprocessor)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: go-worker
     steps:
       - uses: actions/checkout@v6
 
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.25.7"
+          go-version: "1.25"
           cache-dependency-path: go-worker/go.mod
 
       - uses: bufbuild/buf-setup-action@v1
@@ -27,17 +24,18 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate Protobuf code
-        run: |
-          cd ..
-          buf generate proto
+        run: buf generate
 
       - name: Update go modules
+        working-directory: go-worker
         run: go mod tidy
 
-      - name: Build project to check types
+      - name: Build project
+        working-directory: go-worker
         run: go build ./...
 
-      - name: Go Format Check
+      - name: Format Check
+        working-directory: go-worker
         run: |
           if [ -n "$(gofmt -l .)" ]; then
             echo "The following files are not formatted:"
@@ -52,15 +50,13 @@ jobs:
           working-directory: go-worker
           args: ./cmd/... ./internal/...
 
-      - name: Run Tests
-        run: go test -v ./...
+      - name: Run Tests (with race detector)
+        working-directory: go-worker
+        run: go test -v -race -count=1 ./...
 
   node-plane:
     name: Node Plane (Master)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: node-plane
     steps:
       - uses: actions/checkout@v6
 
@@ -74,12 +70,16 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate Protobuf code
-        run: |
-          cd ..
-          buf generate proto
+        run: buf generate
 
       - name: Install dependencies
+        working-directory: node-plane
         run: bun install --frozen-lockfile
 
       - name: Type Check
+        working-directory: node-plane
         run: bunx tsc --noEmit
+
+      - name: Run Tests
+        working-directory: node-plane
+        run: bun test
