@@ -1,9 +1,8 @@
 const OFFSET_64 = BigInt("14695981039346656037");
 const PRIME_64 = BigInt("1099511628211");
 
-const buffer = Buffer.alloc(4);
-
 export const hashPlayer = (userId: number, x: number, y: number, z: number): bigint => {
+  const buffer = Buffer.alloc(4);
   let h = OFFSET_64;
 
   // UserId
