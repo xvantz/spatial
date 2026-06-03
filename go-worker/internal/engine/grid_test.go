@@ -146,6 +146,21 @@ func BenchmarkSpatialGrid_BulkUpdate_1000(b *testing.B) {
 	}
 }
 
+func BenchmarkSpatialGrid_RemovePlayer(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		grid := NewSpatialGrid()
+		for j := 0; j < 1000; j++ {
+			grid.UpdatePosition(uint32(j), float32(j), float32(j), 0)
+		}
+		b.StartTimer()
+
+		for j := 0; j < 1000; j++ {
+			grid.RemovePlayer(uint32(j))
+		}
+	}
+}
+
 func TestSpatialGrid_GetInRadiusWithHash(t *testing.T) {
 	grid := NewSpatialGrid()
 

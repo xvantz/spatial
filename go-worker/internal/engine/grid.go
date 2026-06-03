@@ -21,6 +21,7 @@ type Position struct {
 type SpatialGrid struct {
 	mu           sync.RWMutex
 	buckets      map[uint64][]uint32
+	bucketIndex  map[uint32]int // userID -> index within its bucket slice, for O(1) swap-remove
 	reverseIndex map[uint32]uint64
 	positions    map[uint32]Position
 	playerHashes map[uint32]uint64
@@ -31,6 +32,7 @@ type SpatialGrid struct {
 func NewSpatialGrid() *SpatialGrid {
 	return &SpatialGrid{
 		buckets:      make(map[uint64][]uint32, 10000),
+		bucketIndex:  make(map[uint32]int, 1000),
 		reverseIndex: make(map[uint32]uint64, 1000),
 		positions:    make(map[uint32]Position, 1000),
 		playerHashes: make(map[uint32]uint64, 1000),
@@ -88,6 +90,7 @@ func (g *SpatialGrid) updatePositionLocked(userID uint32, x, y, z float32) {
 		}
 
 		g.buckets[newGridID] = append(g.buckets[newGridID], userID)
+		g.bucketIndex[userID] = len(g.buckets[newGridID]) - 1
 		g.reverseIndex[userID] = newGridID
 	}
 }
@@ -155,16 +158,27 @@ func (g *SpatialGrid) GetInRadius(userID uint32, radius float32, buffer []uint32
 	return visible
 }
 
+// removeFromBucketLocked removes a user from a bucket in O(1) time by swapping
+// with the last element and shrinking the slice. Must be called with the write lock held.
 func (g *SpatialGrid) removeFromBucketLocked(userID uint32, gridID uint64) {
 	bucket := g.buckets[gridID]
-	lastIdx := len(bucket) - 1
+	idx, ok := g.bucketIndex[userID]
+	if !ok {
+		return
+	}
 
-	for i, id := range bucket {
-		if id == userID {
-			bucket[i] = bucket[lastIdx]
-			g.buckets[gridID] = bucket[:lastIdx]
-			return
-		}
+	lastIdx := len(bucket) - 1
+	if idx != lastIdx {
+		lastID := bucket[lastIdx]
+		bucket[idx] = lastID
+		g.bucketIndex[lastID] = idx
+	}
+
+	g.buckets[gridID] = bucket[:lastIdx]
+	delete(g.bucketIndex, userID)
+
+	if lastIdx == 0 {
+		delete(g.buckets, gridID)
 	}
 }
 
