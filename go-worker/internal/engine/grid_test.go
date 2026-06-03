@@ -146,6 +146,56 @@ func BenchmarkSpatialGrid_BulkUpdate_1000(b *testing.B) {
 	}
 }
 
+// --- Radius variants for real-world scenarios ---
+func BenchmarkSpatialGrid_GetInRadius_R150_1000(b *testing.B) { benchmarkGetInRadiusRadius(b, 1000, 150.0) }
+func BenchmarkSpatialGrid_GetInRadius_R500_1000(b *testing.B) { benchmarkGetInRadiusRadius(b, 1000, 500.0) }
+
+func benchmarkGetInRadiusRadius(b *testing.B, numPlayers int, radius float32) {
+	grid := NewSpatialGrid()
+	for i := 0; i < numPlayers; i++ {
+		x := float32(i % 1000)
+		y := float32((i / 1000) % 1000)
+		grid.UpdatePosition(uint32(i), x, y, 0)
+	}
+	buffer := make([]uint32, 0, 1000)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		//nolint:gosec // G115 is safe for benchmark indices
+		_ = grid.GetInRadius(uint32(numPlayers/2), radius, buffer)
+	}
+}
+
+// --- Clustered distribution (1000 players in 100x100 hotspot) ---
+func BenchmarkSpatialGrid_GetInRadius_Clustered_1000(b *testing.B) {
+	grid := NewSpatialGrid()
+	for i := 0; i < 1000; i++ {
+		x := float32(i%10) * 10
+		y := float32((i/10)%10) * 10
+		grid.UpdatePosition(uint32(i), x, y, 0)
+	}
+	buffer := make([]uint32, 0, 1000)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = grid.GetInRadius(500, 50.0, buffer)
+	}
+}
+
+// --- BulkUpdate with smaller batch size ---
+func BenchmarkSpatialGrid_BulkUpdate_100(b *testing.B) {
+	grid := NewSpatialGrid()
+	players := make([]*spatialv1.PlayerDelta, 100)
+	for i := 0; i < 100; i++ {
+		players[i] = &spatialv1.PlayerDelta{
+			UserId:   uint32(i),
+			Position: &spatialv1.Vector3{X: float32(i), Y: float32(i), Z: 0},
+		}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		grid.BulkUpdate(players)
+	}
+}
+
 func BenchmarkSpatialGrid_RemovePlayer(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
