@@ -21,6 +21,12 @@ sequenceDiagram
     participant NATS as NATS Broker
     participant GW as Go-Worker (Coprocessor)
 
+    Note over GW: 0a. Handshake Request
+    GW->>NATS: Request spatial.handshake.sync
+    NATS->>NP: Forward Request
+    NP->>NATS: Respond FullState (all players)
+    NATS->>GW: Forward State
+
     Note over NP: 1. Update positions (40ms tick)
     Note over NP: 2. Update Local XOR Hash
     
@@ -39,21 +45,28 @@ sequenceDiagram
 
     Note over NP: 6. Desync Detection (History Hash Check)
     Note over NP: 7. If Desync -> Full Sync next tick
+
+    Note over GW: 8. Periodic Heartbeat (every 5s)
+    GW->>NATS: Publish spatial.health.heartbeat
+    NATS->>NP: Forward Heartbeat
+
+    Note over NP: 9. Staleness Check (>15s = warn)
 ```
 
 The system consists of two main components communicating over **NATS** using **Protocol Buffers**:
 
-1.  **Node-Plane (TypeScript/Node.js)**:
+1.  **Node-Plane (TypeScript/Bun)**:
     *   Acts as the **Source of Truth** for entity positions.
     *   Simulates entity movement (40ms ticks).
     *   Calculates a **Commutative XOR Hash** of the entire world state.
-    *   Maintains a **Hash History** to mitigate network latency in desync detection.
+    *   Maintains a **Hash History** (up to 1000 entries) to mitigate network latency in desync detection.
 
 2.  **Go-Worker (Golang)**:
     *   Acts as a **Spatial Coprocessor**.
     *   Maintains a voxel-based **Spatial Grid** for efficient proximity queries ($O(1)$ bucket access).
     *   Provides high-speed visibility calculation services.
     *   Independently tracks the state hash to ensure data integrity.
+    *   Publishes periodic **heartbeats** for liveness monitoring.
 
 ## Synchronization Protocol
 
@@ -66,17 +79,38 @@ To ensure the Node-Plane and Go-Worker are always in sync without sending the fu
 
 ### 2. Desync Detection & Mitigation
 -   **Atomic Updates**: Go-Worker uses `BulkUpdate` under a single write lock to process telemetry batches, preventing "dirty reads" of the hash during query processing.
--   **Hash History**: Node-Plane maintains a sliding window of the last 100 generated hashes.
+-   **Hash History**: Node-Plane maintains a sliding window of the last 1000 generated hashes.
 -   **Validation**: When a Visibility Query response arrives from Go, Node-Plane checks if the returned `StateHash` exists in its history.
 -   **Recovery**: If the remote hash is not found in history, a **Full Synchronization** is triggered, dumping all entity positions to the Go-Worker in the next tick.
+
+### 3. Handshake Protocol
+On startup, the Go-Worker requests a full state snapshot from the Node-Plane:
+-   Worker publishes a `HandshakeRequest` on `spatial.handshake.sync` (up to 5 retries, 2s timeout).
+-   Node-Plane responds with a complete `TelemetryBatch` of all current entities.
+-   If the handshake fails (Node-Plane not yet ready), the worker starts with an empty grid and synchronizes incrementally.
+
+### 4. Heartbeat / Liveness
+The Go-Worker publishes a `Heartbeat` message every 5 seconds on `spatial.health.heartbeat`:
+-   `timestamp_ms`: millisecond-precision timestamp for staleness calculation.
+-   `batch_count`: total telemetry batches processed since start.
+-   `grid_size`: current number of tracked entities.
+-   Node-Plane tracks the last heartbeat timestamp and warns if >15s have elapsed without one.
+
+### 5. Graceful Shutdown
+On `SIGINT`/`SIGTERM`, both components follow a deterministic shutdown sequence:
+1. **Root context cancelled** — `monitorRPS`, `StartHeartbeat`, and handshake goroutines exit.
+2. **NATS connection drained** — waits for in-flight message handlers to complete.
+3. **Handshake goroutine waited** — `sync.WaitGroup` ensures it's not mid-retry.
+4. **TelemetryHandler shutdown** — background goroutines (RPS reporter, heartbeat) confirmed stopped.
+5. Process exits cleanly — no `time.Sleep`, no goroutine leaks.
 
 ## Tech Stack
 
 - **Transport**: [NATS](https://nats.io/) (Pub/Sub and Req/Rep)
 - **Serialization**: [Protocol Buffers (v3)](https://protobuf.dev/)
-- **Node-Plane**: Node.js (v20+), Bun, TypeScript
-- **Go-Worker**: Go (v1.25+)
-- **Protobuf Toolchain**: [Buf](https://buf.build/)
+- **Node-Plane**: [Bun](https://bun.sh/) (TypeScript runtime), [Vitest](https://vitest.dev/) (testing)
+- **Go-Worker**: Go (v1.25+), `log/slog` for structured logging
+- **Protobuf Toolchain**: [Buf](https://buf.build/) (remote code generation, v2 schema)
 
 ## Getting Started
 
@@ -121,18 +155,18 @@ bun run dev
 
 ## Benchmarks
 
-Performance measured on **AMD Ryzen 5 6600H** (Go 1.25.9, 6 cores):
+Performance measured on **AMD Ryzen 5 6600H** (Go 1.25.9, 6 cores, Bun 1.3):
 
 ### Proximity Queries (`GetInRadius`)
 
 | Scenario | Players | Radius | Time per Op | Memory / Allocations |
 |----------|---------|--------|-------------|----------------------|
-| **Sparse** | 100 | 50m | **360 ns** | 0 B/op (0 allocs) |
-| **Sparse** | 1,000 | 50m | **425 ns** | 0 B/op (0 allocs) |
-| **Sparse** | 10,000 | 50m | **2.3 µs** | 5.6 KB/op (3 allocs) |
-| **Sparse** | 1,000 | 150m | **3.4 µs** | 0 B/op (0 allocs) |
-| **Sparse** | 1,000 | 500m | **78 µs** | 0 B/op (0 allocs) |
-| **Clustered** | 1,000 | 50m | **1.26 µs** | 0 B/op (0 allocs) |
+| **Sparse** | 100 | 50m | **380 ns** | 0 B/op (0 allocs) |
+| **Sparse** | 1,000 | 50m | **450 ns** | 0 B/op (0 allocs) |
+| **Sparse** | 10,000 | 50m | **2.35 µs** | 5.6 KB/op (3 allocs) |
+| **Sparse** | 1,000 | 150m | **3.5 µs** | 0 B/op (0 allocs) |
+| **Sparse** | 1,000 | 500m | **80 µs** | 0 B/op (0 allocs) |
+| **Clustered** | 1,000 | 50m | **1.30 µs** | 0 B/op (0 allocs) |
 
 ### Bulk Updates (`BulkUpdate`)
 
@@ -149,12 +183,12 @@ Performance measured on **AMD Ryzen 5 6600H** (Go 1.25.9, 6 cores):
 
 ### Performance Progression
 
-| Operation | Original (README v1) | Current | Improvement |
-|-----------|---------------------|---------|-------------|
-| Query (100, r=50) | 1.6 µs | **0.36 µs** | **4.4× faster** |
-| Query (1,000, r=50) | 2.3 µs | **0.43 µs** | **5.4× faster** |
-| Query (10,000, r=50) | 16.7 µs | **2.3 µs** | **7.2× faster** |
-| Bulk Update (1,000) | 68.6 µs | **50 µs** | **1.4× faster** |
+| Operation | Original (baseline) | After optimization | Improvement |
+|-----------|---------------------|--------------------|-------------|
+| Query (100, r=50) | 1.22 µs | **0.38 µs** | **×3.2 faster** |
+| Query (1,000, r=50) | 1.74 µs | **0.45 µs** | **×3.9 faster** |
+| Query (10,000, r=50) | 16.7 µs | **2.35 µs** | **×7.1 faster** |
+| Bulk Update (1,000) | 51.2 µs | **51 µs** | ≈1.0 (not on hot path) |
 
 ### Key Takeaways
 
@@ -178,6 +212,22 @@ Performance measured on **AMD Ryzen 5 6600H** (Go 1.25.9, 6 cores):
     *   Request contains entity IDs and their search radii.
     *   Response contains lists of visible neighbors and the current `state_hash` of the worker.
 
+### Handshake (Req/Rep)
+-   **Subject**: `spatial.handshake.sync`
+-   **Payload**: `HandshakeRequest` -> `HandshakeResponse`
+    *   Worker requests full state on startup.
+    *   Node-Plane responds with all entities as a `TelemetryBatch`.
+
+### Player Removal (Pub/Sub)
+-   **Subject**: `spatial.player.remove`
+-   **Payload**: `PlayerRemove`
+    *   `user_id`: The player being removed — both sides XOR their hash out.
+
+### Heartbeat (Pub/Sub)
+-   **Subject**: `spatial.health.heartbeat`
+-   **Payload**: `Heartbeat`
+    *   `timestamp_ms`, `batch_count`, `grid_size` for liveness monitoring.
+
 ## Implementation Details
 
 ### Spatial Grid (Go)
@@ -190,7 +240,23 @@ The Go-Worker implements a voxel grid with a configurable `CellSize` (default: 5
 
 ### Concurrency Model
 -   Go uses a `sync.RWMutex` to allow multiple concurrent visibility queries while protecting updates.
--   `sync.Pool` is used for Protobuf message objects to minimize Garbage Collection (GC) overhead during high-frequency telemetry.
+-   `sync.Pool` is used for Protobuf message objects and work buffers (`[]uint32`) to minimize Garbage Collection (GC) overhead during high-frequency telemetry.
+
+### Graceful Shutdown
+-   All goroutines are bound to a root `context.WithCancel` — signals trigger immediate, coordinated shutdown.
+-   NATS `Drain()` ensures in-flight message handlers complete before the process exits.
+-   `sync.WaitGroup` tracks the handshake retry goroutine — main blocks until it's finished.
+-   **Zero `time.Sleep`** in the entire shutdown path.
+
+### Structured Logging
+-   All output uses `log/slog` with explicit levels (`Info`, `Warn`, `Error`) and key=value fields.
+-   Machine-parseable without regex — compatible with log aggregators (Loki, Datadog, etc.).
+-   Example: `time=... level=INFO msg="full state applied" players=1000 hash=12345678`
+
+### Health Monitoring
+-   Go-Worker publishes a `Heartbeat` protobuf message every 5 seconds on `spatial.health.heartbeat`.
+-   Node-Plane subscribes to heartbeats and warns via `console.warn` if no heartbeat is received for 15+ seconds.
+-   Heartbeat payload includes `timestamp_ms`, `batch_count`, and `grid_size` for basic observability without external monitoring.
 
 ## License
 
