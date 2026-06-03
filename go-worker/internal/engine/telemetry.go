@@ -62,6 +62,38 @@ func (h *TelemetryHandler) monitorRPS(ctx context.Context) {
 	}
 }
 
+// StartHeartbeat begins publishing periodic liveness heartbeats on the
+// specified NATS subject. The heartbeat includes the current batch count,
+// grid size, and a millisecond timestamp for staleness detection.
+func (h *TelemetryHandler) StartHeartbeat(ctx context.Context, nc *nats.Conn) {
+	h.wg.Add(1)
+	go func() {
+		defer h.wg.Done()
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				msg := &spatialv1.Heartbeat{
+					TimestampMs: time.Now().UnixMilli(),
+					BatchCount:  h.batchCount.Load(),
+					GridSize:    uint32(h.grid.Size()),
+				}
+				data, err := proto.Marshal(msg)
+				if err != nil {
+					log.Printf("[Heartbeat] Marshal error: %v", err)
+					continue
+				}
+				if err := nc.Publish("spatial.health.heartbeat", data); err != nil {
+					log.Printf("[Heartbeat] Publish error: %v", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
 // Shutdown cancels the handler's internal context and waits for background
 // goroutines to finish. Call this before stopping the NATS connection so
 // no handler goroutines are left running.

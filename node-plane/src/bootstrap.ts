@@ -27,6 +27,10 @@ const bootstrap = async () => {
     syncClient.setupHandshake(() => simulation.getAllUsers());
     console.log("[bootstrap] handshake listener ready.");
 
+    // Subscribe to Go worker heartbeat for liveness monitoring
+    syncClient.setupHeartbeat();
+    console.log("[bootstrap] heartbeat listener ready.");
+
     // Run simulation in a fixed tick loop
     let lastTickTime = performance.now();
     const interval = setInterval(() => {

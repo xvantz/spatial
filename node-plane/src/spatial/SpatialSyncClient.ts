@@ -1,6 +1,6 @@
 import { NatsConnection, Subscription } from "@nats-io/transport-node";
 import { IUser } from "../types/user";
-import { TelemetryBatch, PlayerRemove } from "../../gen/spatial/v1/spatial";
+import { TelemetryBatch, PlayerRemove, Heartbeat } from "../../gen/spatial/v1/spatial";
 import { hashPlayer } from "../modules/generator/hash";
 
 /**
@@ -28,6 +28,11 @@ export interface ISpatialSyncClient {
   setupHandshake(getAllUsers: () => IUser[]): void;
 
   /**
+   * Subscribe to heartbeat messages from the Go worker and track liveness.
+   */
+  setupHeartbeat(): void;
+
+  /**
    * Remove a player from the tracked hash state and notify the Go worker.
    * XORs the player's current hash out of the global totalHash.
    */
@@ -43,6 +48,11 @@ export function createSpatialSyncClient(nats: NatsConnection): ISpatialSyncClien
   const hashHistory = new Set<bigint>();
   const maxHistorySize = 1000;
   let handshakeSub: Subscription | null = null;
+  let heartbeatSub: Subscription | null = null;
+  let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  let lastHeartbeat = 0;
+
+  const HEARTBEAT_TIMEOUT_MS = 15_000;
 
   const getCurrentHash = (): bigint => totalHash;
 
@@ -98,6 +108,27 @@ export function createSpatialSyncClient(nats: NatsConnection): ISpatialSyncClien
     });
   };
 
+  const setupHeartbeat = (): void => {
+    if (heartbeatSub) return;
+
+    heartbeatSub = nats.subscribe("spatial.health.heartbeat", {
+      callback: (_err, msg) => {
+        const heartbeat = Heartbeat.decode(msg.data);
+        lastHeartbeat = Number(heartbeat.timestampMs);
+      },
+    });
+
+    // Periodic staleness check every 10s
+    heartbeatInterval = setInterval(() => {
+      const elapsed = Date.now() - lastHeartbeat;
+      if (elapsed > HEARTBEAT_TIMEOUT_MS && lastHeartbeat > 0) {
+        console.warn(
+          `[Heartbeat] No heartbeat for ${Math.floor(elapsed / 1000)}s — worker may be down`,
+        );
+      }
+    }, 10_000);
+  };
+
   const removePlayer = (userId: number): void => {
     const oldHash = playerHashes.get(userId);
     if (oldHash === undefined) return;
@@ -114,9 +145,17 @@ export function createSpatialSyncClient(nats: NatsConnection): ISpatialSyncClien
       handshakeSub.unsubscribe();
       handshakeSub = null;
     }
+    if (heartbeatSub) {
+      heartbeatSub.unsubscribe();
+      heartbeatSub = null;
+    }
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
     playerHashes.clear();
     hashHistory.clear();
   };
 
-  return { getCurrentHash, checkHashInHistory, sync, setupHandshake, removePlayer, cleanup };
+  return { getCurrentHash, checkHashInHistory, sync, setupHandshake, setupHeartbeat, removePlayer, cleanup };
 }

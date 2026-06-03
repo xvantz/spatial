@@ -40,6 +40,9 @@ func main() {
 	telemetry := engine.NewTelemetryHandler(ctx)
 	defer telemetry.Shutdown()
 
+	// Start periodic heartbeat for liveness monitoring.
+	telemetry.StartHeartbeat(ctx, broker.NC())
+
 	_, err = broker.Subscribe("spatial.telemetry", telemetry.HandleNatsMessage)
 	if err != nil {
 		log.Printf("[Fatal] Error subscribe to spatial.telemetry: %v", err)

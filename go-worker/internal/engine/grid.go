@@ -203,6 +203,13 @@ func (g *SpatialGrid) GetTotalHash() uint64 {
 	return g.totalHash
 }
 
+// Size returns the number of players currently tracked in the grid.
+func (g *SpatialGrid) Size() int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return len(g.positions)
+}
+
 // RemovePlayer cleans up a player's data and updates the global state hash.
 func (g *SpatialGrid) RemovePlayer(userID uint32) {
 	g.mu.Lock()

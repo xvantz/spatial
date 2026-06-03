@@ -55,3 +55,9 @@ message HandshakeResponse {
 message PlayerRemove {
   uint32 user_id = 1;
 }
+
+message Heartbeat {
+  int64 timestamp_ms = 1;
+  uint64 batch_count = 2;
+  uint32 grid_size = 3;
+}
