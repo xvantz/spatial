@@ -41,7 +41,7 @@ export function createSpatialSyncClient(nats: NatsConnection): ISpatialSyncClien
   let totalHash = BigInt(0);
   const playerHashes = new Map<number, bigint>();
   const hashHistory = new Set<bigint>();
-  const maxHistorySize = 100;
+  const maxHistorySize = 1000;
   let handshakeSub: Subscription | null = null;
 
   const getCurrentHash = (): bigint => totalHash;
