@@ -30,7 +30,6 @@ export const createVisibilityPinger = (
     const currentLocalHash = getCurrentHash();
     const queryMsg = {
       queries,
-      expectedStateHash: currentLocalHash.toString(),
     };
 
     try {

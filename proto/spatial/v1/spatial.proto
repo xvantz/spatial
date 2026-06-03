@@ -25,7 +25,6 @@ message VisibilityQuery {
 
 message VisibilityBatchQuery {
   repeated VisibilityQuery queries = 1;
-  uint64 expected_state_hash = 2;
 }
 
 message VisibilityResult {
