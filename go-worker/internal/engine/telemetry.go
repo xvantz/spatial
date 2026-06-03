@@ -19,6 +19,7 @@ type TelemetryHandler struct {
 	// pool provides reusable protobuf message objects to minimize allocations
 	// during high-frequency telemetry processing.
 	pool       sync.Pool
+	bufferPool sync.Pool
 	batchCount atomic.Uint64
 	grid       *SpatialGrid
 	cancel     context.CancelFunc
@@ -32,6 +33,12 @@ func NewTelemetryHandler(ctx context.Context) *TelemetryHandler {
 		pool: sync.Pool{
 			New: func() any {
 				return &spatialv1.TelemetryBatch{}
+			},
+		},
+		bufferPool: sync.Pool{
+			New: func() any {
+				buf := make([]uint32, 0, 100)
+				return &buf
 			},
 		},
 		grid:   NewSpatialGrid(),
@@ -181,7 +188,11 @@ func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
 	snapshotHash := h.grid.GetTotalHash()
 
 	results := make([]*spatialv1.VisibilityResult, 0, len(batchQuery.Queries))
-	workBuffer := make([]uint32, 0, 100)
+
+	// Acquire reusable work buffer from pool instead of allocating per call.
+	bufPtr := h.bufferPool.Get().(*[]uint32)
+	workBuffer := *bufPtr
+	workBuffer = workBuffer[:0]
 
 	for _, q := range batchQuery.Queries {
 		visibleIDs, _ := h.grid.GetInRadiusWithHash(q.UserId, q.Radius, workBuffer)
@@ -193,7 +204,15 @@ func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
 			UserId:         q.UserId,
 			VisibleUserIds: finalIDs,
 		})
+
+		// Reset for next query — visibleIDs may have a different header
+		// after GetInRadiusWithHash, so re-slice from the returned value.
+		workBuffer = visibleIDs[:0]
 	}
+
+	// Return buffer to pool for reuse.
+	*bufPtr = workBuffer
+	h.bufferPool.Put(bufPtr)
 
 	response := &spatialv1.VisibilityBatchResponse{
 		Results:   results,
