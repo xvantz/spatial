@@ -89,6 +89,18 @@ func (h *TelemetryHandler) HandleFullState(msg *nats.Msg) {
 	log.Printf("[Handshake] Full state applied: %d players (hash=%d)", len(batch.Players), h.grid.GetTotalHash())
 }
 
+// HandlePlayerRemove removes a player from the grid when the node-plane
+// signals the player has left the world.
+func (h *TelemetryHandler) HandlePlayerRemove(msg *nats.Msg) {
+	remove := &spatialv1.PlayerRemove{}
+	if err := proto.Unmarshal(msg.Data, remove); err != nil {
+		return
+	}
+
+	h.grid.RemovePlayer(remove.UserId)
+	log.Printf("[PlayerRemove] Player %d removed from grid (hash=%d)", remove.UserId, h.grid.GetTotalHash())
+}
+
 // HandleVisibilityBatchQuery processes visibility range requests from clients.
 func (h *TelemetryHandler) HandleVisibilityBatchQuery(msg *nats.Msg) {
 	if msg.Reply == "" {

@@ -46,6 +46,12 @@ func main() {
 		return
 	}
 
+	_, err = broker.Subscribe("spatial.player.remove", telemetry.HandlePlayerRemove)
+	if err != nil {
+		log.Printf("[Fatal] Error subscribe to spatial.player.remove: %v", err)
+		return
+	}
+
 	// ---- Handshake: request full state from node-plane ----
 	go func() {
 		reqData, err := proto.Marshal(&spatialv1.HandshakeRequest{})

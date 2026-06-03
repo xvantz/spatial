@@ -51,3 +51,7 @@ message HandshakeResponse {
   uint64 state_hash = 1;
   repeated PlayerDelta players = 2;
 }
+
+message PlayerRemove {
+  uint32 user_id = 1;
+}

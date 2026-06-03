@@ -1,6 +1,6 @@
 import { NatsConnection, Subscription } from "@nats-io/transport-node";
 import { IUser } from "../types/user";
-import { TelemetryBatch } from "../../gen/spatial/v1/spatial";
+import { TelemetryBatch, PlayerRemove } from "../../gen/spatial/v1/spatial";
 import { hashPlayer } from "../modules/generator/hash";
 
 /**
@@ -26,6 +26,12 @@ export interface ISpatialSyncClient {
    * When a sync_request arrives, responds with a full state snapshot.
    */
   setupHandshake(getAllUsers: () => IUser[]): void;
+
+  /**
+   * Remove a player from the tracked hash state and notify the Go worker.
+   * XORs the player's current hash out of the global totalHash.
+   */
+  removePlayer(userId: number): void;
 
   /** Clean up internal state. */
   cleanup(): void;
@@ -92,6 +98,17 @@ export function createSpatialSyncClient(nats: NatsConnection): ISpatialSyncClien
     });
   };
 
+  const removePlayer = (userId: number): void => {
+    const oldHash = playerHashes.get(userId);
+    if (oldHash === undefined) return;
+
+    totalHash ^= oldHash;
+    playerHashes.delete(userId);
+
+    const msg: PlayerRemove = { userId };
+    nats.publish("spatial.player.remove", PlayerRemove.encode(msg).finish());
+  };
+
   const cleanup = (): void => {
     if (handshakeSub) {
       handshakeSub.unsubscribe();
@@ -101,5 +118,5 @@ export function createSpatialSyncClient(nats: NatsConnection): ISpatialSyncClien
     hashHistory.clear();
   };
 
-  return { getCurrentHash, checkHashInHistory, sync, setupHandshake, cleanup };
+  return { getCurrentHash, checkHashInHistory, sync, setupHandshake, removePlayer, cleanup };
 }
